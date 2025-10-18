@@ -95,7 +95,7 @@ def _smooth_polar_loop(M: int, R0: float, eps: float,
         sign = rng.choice([-1.0, 1.0])
         r *= (1 + eps * sign * a * np.sin(k * phi + phase))
 
-    r = np.clip(r, 0.5 * R0, 1.5 * R0)
+    r = np.clip(r, 0.3 * R0, 1.7 * R0)
     x = r * np.cos(phi)
     y = r * np.sin(phi)
     xy = np.stack([x, y], axis=1)
@@ -151,9 +151,9 @@ def generate_track(
     *,
     max_tries: int = 25,
     R0: float = 200.0,
-    eps_range: Tuple[float, float] = (0.08, 0.2),
-    n_terms_range: Tuple[int, int] = (2, 4),
-    freq_range: Tuple[int, int] = (1, 4),
+    eps_range: Tuple[float, float] = (0.3, 0.6),
+    n_terms_range: Tuple[int, int] = (4, 6),
+    freq_range: Tuple[int, int] = (2, 6),
     pit_len_frac: float = 0.02
 ) -> Tuple[np.ndarray, float]:
     rng = np.random.default_rng(seed)
