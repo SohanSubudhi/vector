@@ -8,7 +8,7 @@ import numpy as np
 
 # --- Simulation Constants ---
 TIME_STEP = 0.1  # seconds
-TOTAL_LAPS = 50
+TOTAL_LAPS = 5
 PIT_STOP_TIME = 20.0  # seconds
 MAX_SPEED = 200.0 # mph (Used for normalization)
 GRAVITY = 9.81 # m/s^2

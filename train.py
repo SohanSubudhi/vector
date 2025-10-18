@@ -21,17 +21,21 @@ def train():
     print("Starting training...")
     
     for i_episode in range(1, num_episodes + 1):
+        print(f"episode {i_episode}")
         state = env.reset()
         episode_score = 0
         done = False
         
         while not done:
+            print("about to act")
             # Select action
             action = agent.act(state, epsilon)
             
+            print("about to step")
             # Take action in environment
             next_state, reward, done = env.step(action)
             
+            print("replay buffer next")
             # Store transition in replay buffer
             agent.memory.push(state, action, reward, next_state, done)
             
@@ -39,18 +43,22 @@ def train():
             state = next_state
             episode_score += reward
             
+            print("about to learn")
             # Perform one step of the optimization
             agent.learn()
             
             if done:
                 break
         
+        print("appending scores")
         scores_window.append(episode_score)
         scores.append(episode_score)
         
+        print("updating epsilon")
         # Update epsilon
         epsilon = max(config.EPSILON_END, epsilon - (config.EPSILON_START - config.EPSILON_END) / config.EPSILON_DECAY)
         
+        print("updating target network")
         # Update target network
         if i_episode % config.TARGET_UPDATE_FREQ == 0:
             agent.update_target_net()
