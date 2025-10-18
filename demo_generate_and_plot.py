@@ -2,7 +2,7 @@
 # Simple demo: generate, validate, visualize a track.
 import argparse
 import json
-from track_gen import generate_track, validate_track, visualize_track
+from track_gen import generate_track, validate_track, visualize_track, track_to_xy
 
 def main():
     parser = argparse.ArgumentParser()
@@ -18,11 +18,15 @@ def main():
     print("Validation:", report)
 
     # Save track data to file
+    xy = track_to_xy(track, s)
+    xy_points = xy[:-1]  # N points
     track_list = []
-    for row in track:
+    for i, row in enumerate(track):
         track_list.append({
             "turn_radius": float(row[0]),
-            "is_pit_stop": bool(row[1])
+            "is_pit_stop": bool(row[1]),
+            "x": float(xy_points[i][0]),
+            "y": float(xy_points[i][1])
         })
     with open("track_data.json", "w") as f:
         json.dump(track_list, f, indent=2)
