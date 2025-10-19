@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Praneel's Race Dashboard (DQN)</title>
+  <title>Race Dashboard (DQN)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root { --gap: 14px; }
@@ -35,7 +35,7 @@
   </style>
 </head>
 <body>
-  <h1>Praneel's Race Dashboard (DQN)</h1>
+  <h1>Race Dashboard (DQN)</h1>
 
   <div class="cards"> 
     <div class="card">
@@ -227,8 +227,10 @@ let trackBounds = null;
 // Load track data once at startup
 async function loadTrackData() {
   try {
-    const res = await fetch('track_data.json');
-    track_data = await res.json();
+    const res = await fetch('track_5762.json');
+    const data = await res.json();
+    track_data = data.visualization_data; 
+    
     if (Array.isArray(track_data) && track_data.length > 1) {
       const xs = track_data.map(p => p.x);
       const ys = track_data.map(p => p.y);
@@ -245,20 +247,32 @@ async function loadTrackData() {
   }
 }
 
-// Draw track and car
 function drawTrack(progress) {
   if (!trackReady) return;
 
-  const { minX, maxX, minY, maxY } = trackBounds;
   const w = trackCanvas.width = trackCanvas.clientWidth;
   const h = trackCanvas.height = trackCanvas.clientHeight;
   ctxTrack.clearRect(0, 0, w, h);
 
-  const pad = 10;
-  const sx = x => pad + ((x - minX) / (maxX - minX)) * (w - 2 * pad);
-  const sy = y => h - (pad + ((y - minY) / (maxY - minY)) * (h - 2 * pad));
+  const pad = 20; // canvas border
 
-  // Draw track line
+  // Find min/max from track data dynamically
+  const xs = track_data.map(p => p.x);
+  const ys = track_data.map(p => p.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  const trackWidth = maxX - minX;
+  const trackHeight = maxY - minY;
+
+  // Normalize scale to fit canvas
+  const scale = Math.min((w - 2*pad) / trackWidth, (h - 2*pad) / trackHeight);
+
+  // Function to map real track coordinates to canvas
+  const sx = x => pad + (x - minX) * scale;
+  const sy = y => h - pad - (y - minY) * scale; // invert y-axis for canvas
+
+  // Draw track
   ctxTrack.beginPath();
   ctxTrack.lineWidth = 2;
   ctxTrack.strokeStyle = '#999';
@@ -266,7 +280,7 @@ function drawTrack(progress) {
   for (const p of track_data) ctxTrack.lineTo(sx(p.x), sy(p.y));
   ctxTrack.stroke();
 
-  // Draw moving car
+  // Draw car
   const idx = progress * (track_data.length - 1);
   const low = Math.floor(idx);
   const high = Math.min(track_data.length - 1, low + 1);
