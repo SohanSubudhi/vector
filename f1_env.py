@@ -23,8 +23,7 @@ class CarState:
     completion_percent: float = 0.0
     status: CarStatus = CarStatus.RACING
     max_safe_speeds_ms: np.ndarray = field(default_factory=lambda: np.array([]))
-    distance_to_pit_entry_m: float = float('inf') # ++ NEW: Store distance to pit entry
-    # -- REMOVED: `trimmed_speed` is no longer needed with the new hard cap logic.
+    distance_to_pit_entry_m: float = float('inf')
 
 class F1Car:
     MASS_KG, G_ACCEL, MU_FRICTION = 798.0, 9.81, 1.6
@@ -38,11 +37,11 @@ class F1Car:
         self.distance_traveled_m = 0.0
         self.time = 0.0
         self._throttle_brake_input: float = 0.0
-        self.pit_intent_input: float = 0.0 # ++ NEW: Store agent's pit intent
+        self.pit_intent_input: float = 0.0
         self.pit_stop_timer: float = 0.0
         self.pit_stop_duration_s: float = np.random.uniform(3.0, 4.0)
         self.is_sliding: float = 0.0
-        self.is_serviced_this_stop: bool = False # ++ ADD THIS LINE
+        self.is_serviced_this_stop: bool = False
 
     def _derivatives(self, t: float, y: np.ndarray) -> np.ndarray:
         distance, speed, _, _, _, _, _ = y
@@ -74,70 +73,51 @@ class F1Car:
 
     def _handle_pitting(self):
         """Manages pitting: use distance-based entry tolerance and robust exit/service handling."""
-        # configurable window (meters) around the pit entry to accept a pit request
+
         pit_entry_window_m = 50.0
         is_requesting_pit = self.pit_intent_input > 0.5
 
-        # compute distance to pit entry using the track helper (returns >=0)
         dist_to_pit_entry = self.track.get_distance_to_pit_entry(self.distance_traveled_m)
 
-        # Enter pits if agent requests and is close enough to the pit entry
         if self.state.status == CarStatus.RACING and is_requesting_pit and dist_to_pit_entry <= pit_entry_window_m:
             self.state.status = CarStatus.PITTING
-            # ensure pit service will occur when arriving at pit box
             self.is_serviced_this_stop = False
-            # reset timer at moment of transition
             self.pit_stop_timer = 0.0
 
-        # If we're currently being serviced at the pit box
-        if self.state.status == CarStatus.PITTING and self.track.is_at_pit_box(self.distance_traveled_m) and not self.is_serviced_this_stop:
-            # service happens in step() - handled there; keep state as PITTING until service finished
-            return
 
-        # After being serviced, if we have left the pit-box region, mark race state as resumed.
-        # We consider "left pit area" to be beyond the pit-stoppable region (simple and robust).
+        if self.state.status == CarStatus.PITTING and self.track.is_at_pit_box(self.distance_traveled_m) and not self.is_serviced_this_stop:
+            return
+        
         if self.state.status == CarStatus.PITTING and self.is_serviced_this_stop:
-            # if we are beyond the pit stopping region (i.e., exiting pit lane) then return to racing
+
             if not self.track.is_pit_stoppable(self.distance_traveled_m):
                 self.state.status = CarStatus.RACING
-                # make sure pit timers/flags are reset for next pit stop
                 self.pit_stop_timer = 0.0
-                # is_serviced_this_stop remains True until next time we request pit (reset on new entry)
+
     def step(self, action: np.ndarray):
-        # -- MODIFIED: Accept a 2-element action array [throttle_brake, pit_intent]
         throttle_brake, pit_intent = action[0], action[1]
         self.pit_intent_input = pit_intent
         self._throttle_brake_input = throttle_brake
 
-        # -- MODIFIED: Pitting is now based on agent's decision
         self._handle_pitting()
 
-        # Override agent throttle/brake if car is in the pit lane
         if self.state.status == CarStatus.PITTING:
-            # If at the pit box and haven't been serviced this stop
             if self.track.is_at_pit_box(self.distance_traveled_m) and not self.is_serviced_this_stop:
-                # hold the car stationary during active service
                 self.state.speed_ms = 0.0
                 self.pit_stop_timer += self.time_step
 
-                # service complete
                 if self.pit_stop_timer >= self.pit_stop_duration_s:
                     self.state.fuel_percent = 100.0
                     self.state.tires_health_percent.fill(100.0)
                     self.pit_stop_timer = 0.0
                     self.is_serviced_this_stop = True
 
-                # Advance time but do not run normal physics while being serviced
                 self.time += self.time_step
-                return  # skip further physics during service
+                return
 
-            # If we've already been serviced but still inside pit-stoppable region, enforce pit-lane speed control
             if self.is_serviced_this_stop and self.track.is_pit_stoppable(self.distance_traveled_m):
-                # gently move the car out of pit-box region so that _handle_pitting can transition back to RACING
-                # set a small forward speed (less than pit lane max) so the car exits the pit area
                 self.state.speed_ms = min(self.PIT_LANE_SPEED_MS, max(self.state.speed_ms, self.PIT_LANE_SPEED_MS * 0.5))
         
-        # If in pit lane (including after service), control speed automatically
         elif self.track.is_pit_stoppable(self.distance_traveled_m):
             self._throttle_brake_input = -1.0 if self.state.speed_ms > self.PIT_LANE_SPEED_MS else 0.2
         
@@ -150,10 +130,9 @@ class F1Car:
         raw_speed = max(0, y_new[1])
         max_safe_speed = self.get_max_cornering_speed(self.distance_traveled_m, self.state.tires_health_percent)
 
-        # If overspeeding, enforce a corrective braking force (proportional to overshoot).
         if raw_speed > max_safe_speed:
             overshoot = raw_speed - max_safe_speed
-            # stronger braking: scale deceleration with overshoot (clamped)
+            # clamped
             corrective_decel = min(abs(self.SLIDE_DECELERATION_MS2), 5.0 + 10.0 * (overshoot / max(1.0, max_safe_speed)))
             speed_loss = corrective_decel * self.time_step
             self.is_sliding = overshoot
@@ -174,17 +153,16 @@ class F1Car:
         grip_factor = np.clip(front_tire_health / 60.0, 0.3, 1.0)
         effective_mu = self.MU_FRICTION * grip_factor
         
-        # ++ NEW: Smoothing by sampling multiple points and finding the tightest corner
+        # smoothing
         distances_to_sample = [distance - 5, distance, distance + 5, distance + 10]
         radii = [abs(self.track.get_turn_radius(d)) for d in distances_to_sample]
         
-        # Use the minimum radius (tightest turn) in the immediate area for safety
         min_radius = min(r for r in radii if r > 1e-6) if any(r > 1e-6 for r in radii) else float('inf')
         
         if np.isinf(min_radius):
-            return 999.0 # Effectively no speed limit on a straight
+            return 999.0
         
-        return math.sqrt((effective_mu * self.G_ACCEL * min_radius) + 40)
+        return math.sqrt((effective_mu * self.G_ACCEL * min_radius)) + 40
 
 class F1Env(gym.Env):
     metadata = {"render_modes": []}
@@ -241,10 +219,9 @@ class F1Env(gym.Env):
         return np.clip(norm_obs, -1.0, 1.0).astype(np.float32)
 
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
-        # --- Store the state BEFORE the car takes its step ---
 
         if np.random.rand() < 0.005:
-            action[1] = 1.0  # 0.5% chance to “randomly” request pit
+            action[1] = 1.0  # 0.5% chance to “randomly” request pit (encourage exploration)
 
         prev_fuel = self.car.state.fuel_percent
         prev_tires = np.copy(self.car.state.tires_health_percent)
@@ -253,20 +230,16 @@ class F1Env(gym.Env):
         prev_laps = int(prev_distance / self.track.track_length)
         prev_status = self.car.state.status
 
-        # The car's internal state is updated here
         self.car.step(action)
         
-        # Update environment information based on the new car state
         self._update_lookaheads()
         self.car.state.distance_to_pit_entry_m = self.track.get_distance_to_pit_entry(self.car.distance_traveled_m)
         
         terminated = False
         
-        # --- REWARD/PENALTY LOGIC ---
-        
         # 1. Progress Reward (Primary Motivator)
         distance_gain = self.car.distance_traveled_m - prev_distance
-        progress_reward = 10.0 * distance_gain   # previously 7.5
+        progress_reward = 5 * distance_gain   # previously 7.5
 
         # 2. Speed Management Reward
         lookahead_speeds = self.car.state.max_safe_speeds_ms
@@ -282,18 +255,17 @@ class F1Env(gym.Env):
         # 3. Braking Reward
         max_safe_speed_50m_ahead = lookahead_speeds[2]
         is_braking_zone = max_safe_speed_50m_ahead < max_safe_speed_current * 0.9 and current_speed > max_safe_speed_50m_ahead
-        braking_reward = 300 * abs(action[0]) if is_braking_zone and action[0] < -0.1 else 0.0
+        braking_reward = 500 * abs(action[0]) if is_braking_zone and action[0] < -0.05 else 0.0
             
         # 4. Strategic Pitting Reward
         strategic_pitting_reward = 0.0
         car_is_entering_pits = (self.car.state.status == CarStatus.PITTING and prev_status == CarStatus.RACING)
         if car_is_entering_pits:
-            # reward proportional to expected value of the pit (fuel + tires) but keep small
             fuel_needed = max(0.0, 100.0 - prev_fuel)
             tires_needed = np.mean(np.maximum(0.0, 100.0 - prev_tires))
             pit_value = (fuel_needed + tires_needed) / 2.0
             # smaller positive reward for entering when it's actually useful
-            strategic_pitting_reward = pit_value * 10.0 + 50.0
+            strategic_pitting_reward = pit_value * 10 + 40.0
 
         # 5. Resource Depletion Penalty
         resource_penalty = 0.0
@@ -304,9 +276,7 @@ class F1Env(gym.Env):
             resource_penalty -= 20.0 * (1.0 - self.car.state.fuel_percent / 40.0)**2
 
         # 6. Penalties for Sliding & Jerk
-        sliding_penalty = -15 * self.car.is_sliding
-        # control_jerk = abs(action[0] - self.last_action)
-        # smoothness_penalty = -0.001 * control_jerk
+        sliding_penalty = -40 * self.car.is_sliding
         self.last_action = action[0]
 
         # 7. Lap Bonus
@@ -315,16 +285,14 @@ class F1Env(gym.Env):
         if current_laps > prev_laps:
             lap_bonus = 200.0
 
-        # 8. ++ NEW: Penalty for being stopped still ++
+        # 8.
         stopped_penalty = 0.0
         is_stopped = self.car.state.speed_ms < 0.1
-        # We must check if the car is in the pit box for service, as this is a valid stop
         is_in_pit_box = self.track.is_at_pit_box(self.car.distance_traveled_m)
         
         if is_stopped and not is_in_pit_box:
-            stopped_penalty = -200.0 # Apply a consistent penalty for every step the car is stopped
+            stopped_penalty = -200.0 
 
-        # --- Combine all reward components ---
         reward = (progress_reward + speed_reward + braking_reward + 
                 strategic_pitting_reward + resource_penalty + 
                 sliding_penalty + lap_bonus +
@@ -333,7 +301,6 @@ class F1Env(gym.Env):
         distance_to_pit = self.car.state.distance_to_pit_entry_m
         low_resources = (self.car.state.fuel_percent < 35.0 or np.min(self.car.state.tires_health_percent) < 35.0)
         if low_resources and distance_to_pit < 200.0 and self.car.state.status == CarStatus.RACING:
-            # small per-step penalty increasing when closer and lower resources
             miss_pit_penalty = -5.0 * (1.0 + (200.0 - distance_to_pit) / 200.0)
             reward += miss_pit_penalty
         

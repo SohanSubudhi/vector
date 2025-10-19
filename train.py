@@ -43,18 +43,12 @@ class PatchedRolloutBuffer(RolloutBuffer):
             if not isinstance(log_prob_tensor, th.Tensor):
                 log_prob_tensor = th.as_tensor(log_prob_tensor, device=self.policy.device)
 
-        # Detach log_prob to avoid SB3 numpy conversion errors
         log_prob_tensor = log_prob_tensor.detach()
 
-        # --- Call original add ---
         super().add(obs, action, reward, done, value, log_prob_tensor)
 
-# ==============================================================================
-# ++ NEW: Visualization Callback Class ++
-# This class will periodically run a visualized evaluation during training.
-# ==============================================================================
+
 class VisualizationCallback(BaseCallback):
-    # ... (__init__ method is unchanged) ...
     def __init__(self, eval_env: gym.Env, eval_freq: int, log_dir: str, render_every_n_steps: int = 1, verbose: int = 1):
         super(VisualizationCallback, self).__init__(verbose)
         self.eval_env = eval_env
@@ -199,12 +193,11 @@ def cosine_restarts_schedule(initial_value: float, n_restarts: int) -> Callable[
     return func
 
 def main():
-    # --- SCRIPT CONFIGURATION ---
-    # MODIFIED: Set run_live_visualization to False to avoid running it *after* training
-    CONTINUE_TRAINING = True # <-- SET TO TRUE TO LOAD A MODEL
-    MODEL_TO_LOAD = "ppo_f1_driver_final_test_three.zip" # <-- YOUR MODEL FILE
+    # Set run_live_visualization to False to avoid running it *after* training
+    CONTINUE_TRAINING = True 
+    MODEL_TO_LOAD = "ppo_f1_driver_final_test_six.zip" 
     run_live_visualization_after_training = True
-    eval_track_path = 'track_5762.json'  # <-- The track for visualization
+    eval_track_path = 'track_5762.json' 
     log_dir = "f1_training_logs/"
     os.makedirs(log_dir, exist_ok=True)
 
@@ -214,11 +207,9 @@ def main():
     # Create the parallel environments for training
     vec_env = make_vec_env('F1Env-v0', n_envs=num_cpu, vec_env_cls=SubprocVecEnv)
     
-    # Create a *separate, single* environment just for the visualization callback
     vis_env = gym.make('F1Env-v0', track_filepath=eval_track_path)
 
-    # ++ NEW: Instantiate the custom callback
-    # It will run a visualization every 200,000 training steps
+    # Instantiate the custom callback
     vis_callback = VisualizationCallback(eval_env=vis_env, eval_freq=2000000, log_dir=log_dir, render_every_n_steps=20)
 
     # device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -275,7 +266,6 @@ def main():
     )
     model.rollout_buffer.policy = model.policy  # attach current policy
     
-    # ++ NEW: Pass the callback to the learn method
     if CONTINUE_TRAINING:
         total_timesteps = 400_000
     else:
@@ -283,16 +273,16 @@ def main():
 
     model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=vis_callback)
 
-    model_path = "ppo_f1_driver_final_test_four"
+    model_path = "ppo_f1_driver_final_test_seven"
     model.save(model_path)
-    print(f"\n✅ Training complete. Model saved to '{model_path}.zip'")
+    print(f"\n Training complete. Model saved to '{model_path}.zip'")
     vec_env.close()
-    vis_env.close() # Close the visualization environment
+    vis_env.close() 
 
 
     eval_track_path = 'track_5762.json'
-    print(f"\n🏁 Evaluating trained agent on specific track: {eval_track_path}...")
-    model = PPO.load(model_path)
+    print(f"\n Evaluating trained agent on specific track: {eval_track_path}...")
+    model = PPO.load(MODEL_TO_LOAD)
     eval_env = gym.make('F1Env-v0', track_filepath=eval_track_path)
     obs, info = eval_env.reset()
 
@@ -335,7 +325,6 @@ def main():
             car_pos = info.get("position", [0, 0])
             car_dot.set_data([car_pos[0]], [car_pos[1]])
             
-            # -- MODIFIED: Display both throttle/brake and pit intent
             action_str = "Coasting"
             if action[0] > 0.05: action_str = f"Throttle: {action[0]*100:3.0f}%"
             elif action[0] < -0.05: action_str = f"Brake:    {-action[0]*100:3.0f}%"
@@ -347,6 +336,7 @@ def main():
                 f"--- CAR STATE ---\n Time: {time_str}\n Lap: {info.get('laps', 0)}\n Status: {car_status_str}\n"
                 f" Speed: {speed_kmh:5.1f} km/h\n Max Safe Speed: {info.get('max_safe_speed_kmh', 0.0):5.1f} km/h\n"
                 f" Fuel: {fuel_pct:5.1f}%\n Tires (Min): {min_tire_health:5.1f}%\n\n"
+                f' Distance from pit stop: {info.get("distance_to_pit_entry_m", 0.0):5.1f} m\n\n'
                 f"--- AGENT ACTION ---\n Accel/Brake: {action_str}\n Pit Intent:    {pit_action_str}"
             )
             info_text.set_text(text_str)
