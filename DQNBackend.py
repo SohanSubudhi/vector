@@ -263,4 +263,4 @@ async def get_history(seconds: int = 30):
 if __name__ == "__main__":
     import uvicorn
     # Make sure to run PraneelBackend:app
-    uvicorn.run("PraneelBackend:app", host="0.0.0.0", port=PORT, reload=True)
+    uvicorn.run("DQNBackend:app", host="0.0.0.0", port=PORT, reload=True)
