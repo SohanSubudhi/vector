@@ -213,7 +213,7 @@ class Track:
         control_xy = np.vstack([final_xy, final_xy[0]])
         pit_len = max(1, int(round(0.05 * n_points)))
         pit_mask = np.zeros(n_points, dtype=bool)
-        pit_start_index = n_points - pit_len
+        pit_start_index = rng.integers(0, n_points - pit_len)
         pit_mask[np.arange(start=pit_start_index, stop=n_points)] = True
         control_points = np.hstack([control_xy, np.zeros((control_xy.shape[0], 1))])
         return cls(control_points, pit_mask)

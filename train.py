@@ -54,25 +54,26 @@ def main():
     vec_env.close()
 
     # --- 2. Evaluating the Trained Agent ---
-    # (The rest of the evaluation script remains unchanged)
-    if run_live_visualization:
-        print("\n🏁 Evaluating trained agent with live visualization...")
-    else:
-        print("\n🏁 Evaluating trained agent at maximum speed (headless)...")
+    eval_track_path = 'track_5762.json'  # <-- SET YOUR SPECIFIC TRACK FILE HERE
+    
+    print(f"\n🏁 Evaluating trained agent on specific track: {eval_track_path}...")
         
     model = PPO.load(model_path)
-    eval_env = gym.make('F1Env-v0')
+    
+    # MODIFIED: Create the environment in "Fixed Track Mode" by passing the filepath
+    eval_env = gym.make('F1Env-v0', track_filepath=eval_track_path)
+    
     obs, info = eval_env.reset()
 
+    # Save the specific track file used for this evaluation
     track = eval_env.unwrapped.track
     track.export_to_json("evaluated_track.json")
-    print("Track used for evaluation saved to 'evaluated_track.json'")
+    print(f"Track used for evaluation ('{eval_track_path}') saved to 'evaluated_track.json'")
 
     if run_live_visualization:
         plt.ion()
         fig, ax = plt.subplots(figsize=(12, 9))
         track = eval_env.unwrapped.track
-
         track_points = track.spline.evaluate(np.linspace(0, track.n_points, 2000))
         ax.plot(track_points[:, 0], track_points[:, 1], 'k--', alpha=0.4, label="Track Centerline")
         pit_indices = np.where(track.pit_mask)[0]
@@ -111,32 +112,18 @@ def main():
             minutes = int(sim_time_s / 60)
             seconds = sim_time_s % 60
             time_str = f"{minutes:02d}:{seconds:04.1f}"
-            
             car_pos = info.get("position", [0, 0])
             car_dot.set_data([car_pos[0]], [car_pos[1]])
-            
             action_str = "Coasting"
-            if action[0] > 0.05:
-                action_str = f"Throttle: {action[0]*100:3.0f}%"
-            elif action[0] < -0.05:
-                action_str = f"Brake:    {-action[0]*100:3.0f}%"
-            
+            if action[0] > 0.05: action_str = f"Throttle: {action[0]*100:3.0f}%"
+            elif action[0] < -0.05: action_str = f"Brake:    {-action[0]*100:3.0f}%"
             car_status_str = info.get("status", "UNKNOWN")
-
             text_str = (
-                f"--- CAR STATE ---\n"
-                f" Time: {time_str}\n"
-                f" Lap: {info.get('laps', 0)}\n"
-                f" Status: {car_status_str}\n"
-                f" Speed: {speed_kmh:5.1f} km/h\n"
-                f" Max Safe Speed: {info.get('max_safe_speed_kmh', 0.0):5.1f} km/h\n"
-                f" Fuel: {fuel_pct:5.1f}%\n"
-                f" Tires (Min): {min_tire_health:5.1f}%\n\n"
-                f"--- AGENT ACTION ---\n"
-                f" {action_str}"
+                f"--- CAR STATE ---\n Time: {time_str}\n Lap: {info.get('laps', 0)}\n Status: {car_status_str}\n"
+                f" Speed: {speed_kmh:5.1f} km/h\n Max Safe Speed: {info.get('max_safe_speed_kmh', 0.0):5.1f} km/h\n"
+                f" Fuel: {fuel_pct:5.1f}%\n Tires (Min): {min_tire_health:5.1f}%\n\n--- AGENT ACTION ---\n {action_str}"
             )
             info_text.set_text(text_str)
-            
             fig.canvas.draw()
             fig.canvas.flush_events()
 
