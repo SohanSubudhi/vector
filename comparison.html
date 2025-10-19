@@ -894,5 +894,89 @@
         loadData();
 
     </script>
+
+    <!-- Strategy Insights Button -->
+    <button id="insightsBtn" style="
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        background-color: #3b82f6;
+        color: white;
+        border: none;
+        border-radius: 999px;
+        padding: 12px 18px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        cursor: pointer;
+        z-index: 1000;
+    ">
+    💡 Strategy Insights
+    </button>
+
+    <script>
+    const GEMINI_API_KEY = "AIzaSyAei8POTagGH93Bk1C_SY8HU2VjwKD_7R4";
+    const ELEVEN_API_KEY = "b73e868ba9b07b7fa3a4939108c7c63ea157e82da183e04605f308597b4d11b0";
+    const ELEVEN_VOICE_ID = "lUTamkMw7gOzZbFIwmq4"; // e.g. "Rachel"
+
+    async function getRaceInsights() {
+        try {
+            // Collect latest data snapshot
+            const blueData = agent1.state || {};
+            const redData = agent2.state || {};
+
+            const prompt = `
+    You are a race strategy AI analyst. Compare the following two cars' current data and suggest race strategy insights (pit stop timing, tire usage, fuel, speed pacing, etc.). 
+    Keep the tone professional and concise.
+
+    Blue Car (DQN): ${JSON.stringify(blueData, null, 2)}
+    Red Car (PPO): ${JSON.stringify(redData, null, 2)}
+    `;
+
+            // --- Call Gemini ---
+            const geminiResponse = await fetch(
+                "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + GEMINI_API_KEY,
+                {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        contents: [{ role: "user", parts: [{ text: prompt }] }]
+                    })
+                }
+            );
+            const geminiData = await geminiResponse.json();
+            const text = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || "No insight generated.";
+
+            console.log("Gemini insight:", text);
+
+            // --- Speak it with ElevenLabs ---
+            const audioResponse = await fetch(
+                `https://api.elevenlabs.io/v1/text-to-speech/${ELEVEN_VOICE_ID}`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "xi-api-key": ELEVEN_API_KEY
+                    },
+                    body: JSON.stringify({
+                        text: text,
+                        voice_settings: { stability: 0.4, similarity_boost: 0.7 }
+                    })
+                }
+            );
+            const audioBlob = await audioResponse.blob();
+            const audioUrl = URL.createObjectURL(audioBlob);
+            const audio = new Audio(audioUrl);
+            audio.play();
+
+        } catch (err) {
+            console.error("Error generating insights:", err);
+            alert("Could not fetch strategy insights. Check console for details.");
+        }
+    }
+
+    document.getElementById("insightsBtn").addEventListener("click", getRaceInsights);
+    </script>
+
 </body>
 </html>
