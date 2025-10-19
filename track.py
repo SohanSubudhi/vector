@@ -286,18 +286,35 @@ class Track:
         return float(self.n_points)
 
     def get_distance_to_pit_entry(self, current_distance: float) -> float:
-        """Calculates the forward distance along the track to the pit entry zone."""
+        """
+        Calculates the forward distance to the next pit entry zone.
+        Returns 0.0 if the car is currently within any part of the pit entry zone.
+        """
+        # -- NEW: Check if the car is already in the pit entry zone --
+        if self.is_in_pit_entry_zone(current_distance):
+            return 0.0
+
+        # If not in the zone, calculate the distance to the start of the next one.
         if self.pit_box_index == -1:
-            return self.track_length * 2
+            return self.track_length * 2 # Effectively infinite
+
+        # Find the starting index of the pit entry zone
         pit_indices = np.where(self.pit_mask)[0]
         pit_entry_start_idx = (pit_indices[0] - 10 + self.n_points) % self.n_points
+        
+        # Convert the index to a distance along the track
         pit_entry_start_distance = pit_entry_start_idx * self.dist_per_segment
+        
+        # Get the car's position within a single lap
         current_distance_mod = current_distance % self.track_length
-        if current_distance_mod <= pit_entry_start_distance:
-            return pit_entry_start_distance - current_distance_mod
-        else:
-            return (self.track_length - current_distance_mod) + pit_entry_start_distance
 
+        # Calculate the forward distance, wrapping around to the next lap if needed
+        distance = pit_entry_start_distance - current_distance_mod
+        if distance < 0:
+            distance += self.track_length
+            
+        return distance
+    
     def get_turn_radius(self, distance: float) -> float:
         t = self.distance_to_t(distance)
         d1, d2 = self.spline.evaluate(t, 1), self.spline.evaluate(t, 2)

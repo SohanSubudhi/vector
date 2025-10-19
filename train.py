@@ -99,6 +99,7 @@ class VisualizationCallback(BaseCallback):
                         f" Max Safe: {info.get('max_safe_speed_kmh', 0.0):5.1f} km/h\n"
                         f" Fuel: {car_state.fuel_percent:5.1f}% | Reward: {total_reward:<5.2f}\n"
                         f" Tires (Min): {np.min(car_state.tires_health_percent):5.1f}%\n"
+                        f' Distance from pit stop: {info.get("distance_to_pit_entry_m", 0.0):5.1f} m\n'
                         f"\n"
                         f"--- AGENT ACTION ---\n"
                         f" Raw Values:  {raw_action_str}\n"
@@ -173,48 +174,48 @@ def main():
     num_cpu = 4  # Keep training parallelized for speed
     
     # Create the parallel environments for training
-    vec_env = make_vec_env('F1Env-v0', n_envs=num_cpu, vec_env_cls=SubprocVecEnv)
+    # vec_env = make_vec_env('F1Env-v0', n_envs=num_cpu, vec_env_cls=SubprocVecEnv)
     
     # Create a *separate, single* environment just for the visualization callback
-    vis_env = gym.make('F1Env-v0', track_filepath=eval_track_path)
+    # vis_env = gym.make('F1Env-v0', track_filepath=eval_track_path)
 
     # ++ NEW: Instantiate the custom callback
     # It will run a visualization every 100,000 training steps
-    vis_callback = VisualizationCallback(eval_env=vis_env, eval_freq=100000, log_dir=log_dir, render_every_n_steps=20)
+    # vis_callback = VisualizationCallback(eval_env=vis_env, eval_freq=50000, log_dir=log_dir, render_every_n_steps=20)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device} for training.")
+    # device = "cuda" if torch.cuda.is_available() else "cpu"
+    # print(f"Using device: {device} for training.")
 
     # It's good practice to define these in a dictionary
-    ppo_params = {
-        "n_steps": 2048,
-        "batch_size": 128,
-        "n_epochs": 10,
-        "gamma": 0.999,
-        "gae_lambda": 0.95,
-        "learning_rate": cosine_restarts_schedule(3e-4, n_restarts=4),
-        "clip_range": linear_schedule(0.2),
-        "ent_coef": 0.005,
-        "vf_coef": 0.5,
-        "policy_kwargs": dict(net_arch=dict(pi=[128, 128], vf=[128, 128]))
-    }
-    model = PPO(
-        "MlpPolicy",
-        vec_env,
-        verbose=1,
-        # tensorboard_log="./f1_tensorboard_log/",
-        device=device,
-        **ppo_params
-    )
+    # ppo_params = {
+    #     "n_steps": 2048,
+    #     "batch_size": 128,
+    #     "n_epochs": 10,
+    #     "gamma": 0.999,
+    #     "gae_lambda": 0.95,
+    #     "learning_rate": cosine_restarts_schedule(3e-4, n_restarts=4),
+    #     "clip_range": linear_schedule(0.2),
+    #     "ent_coef": 0.05,
+    #     "vf_coef": 0.5,
+    #     "policy_kwargs": dict(net_arch=dict(pi=[128, 128], vf=[128, 128]))
+    # }
+    # model = PPO(
+    #     "MlpPolicy",
+    #     vec_env,
+    #     verbose=1,
+    #     # tensorboard_log="./f1_tensorboard_log/",
+    #     device=device,
+    #     **ppo_params
+    # )
     
     # ++ NEW: Pass the callback to the learn method
-    model.learn(total_timesteps=200_000, progress_bar=True, callback=vis_callback)
+    # model.learn(total_timesteps=200_000, progress_bar=True, callback=vis_callback)
     
     model_path = "ppo_f1_driver_final"
-    model.save(model_path)
-    print(f"\n✅ Training complete. Model saved to '{model_path}.zip'")
-    vec_env.close()
-    vis_env.close() # Close the visualization environment
+    # model.save(model_path)
+    # print(f"\n✅ Training complete. Model saved to '{model_path}.zip'")
+    # vec_env.close()
+    # vis_env.close() # Close the visualization environment
 
 
     eval_track_path = 'track_5762.json'
