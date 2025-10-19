@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Race Dashboard</title>
+  <title>Praneel's Race Dashboard (DQN)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root { --gap: 14px; }
@@ -14,33 +14,39 @@
     .value { font-size: 20px; font-weight: 600; }
     .muted { color: #666; font-size: 12px; }
     .pill { display:inline-block; padding:4px 10px; border-radius:999px; border:1px solid #ccc; text-transform: capitalize; font-weight:600; }
-    .pill[data-a="speed_up"] { background:#e6ffed; }
-    .pill[data-a="slow_down"] { background:#fff5e6; }
-    .pill[data-a="maintain"] { background:#eef2ff; }
+    .pill[data-a="0"] { background:#e6ffed; color: #00611a; border-color: #a3e9b6; } /* Accel */
+    .pill[data-a="1"] { background:#fff5e6; color: #783a00; border-color: #ffdcb0; } /* Brake */
+    .pill[data-a="2"] { background:#eef2ff; color: #3730a3; border-color: #c1c7f7; } /* Coast */
+    .pill[data-a="3"] { background:#fef2f2; color: #9a2c2c; border-color: #f7c1c1; } /* Pit */
 
     .grid { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap); }
+    /* --- NEW: 2x2 Grid for Charts --- */
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
+    /* --- End New --- */
     canvas { width: 100%; height: 260px; }
     .vstack { display: grid; gap: var(--gap); }
     .progress { width: 100%; height: 8px; background: #f0f0f0; border-radius: 999px; overflow:hidden; margin-top:6px; }
     .bar { height: 100%; width: 0%; background: #3b82f6; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
     .small { font-size: 12px; }
+    /* --- NEW: Style for Lap Progress Text --- */
+    #lapProgressText { font-size: 14px; margin-top: 4px; color: #333; }
+    /* --- End New --- */
   </style>
 </head>
 <body>
-  <h1>Race Dashboard</h1>
+  <h1>Praneel's Race Dashboard (DQN)</h1>
 
-  <!-- Top status strip -->
-  <div class="cards">
+  <div class="cards"> 
     <div class="card">
-      <div class="muted">Track Progress</div>
-      <div class="row"><div class="value" id="progressPct">—%</div><div class="small" id="progressHint"></div></div>
+      <div class="muted">Lap Progress</div>
+      <div class="value"><span id="progressPct">0</span>%</div>
       <div class="progress"><div class="bar" id="progressBar"></div></div>
     </div>
 
     <div class="card">
-      <div class="muted">Speed / Max Safe</div>
-      <div class="value"><span id="speed">0.0</span> / <span id="maxSpeed">0.0</span> m/s</div>
+      <div class="muted">Speed (km/h)</div>
+      <div class="value"><span id="speed">0.0</span> km/h</div>
     </div>
 
     <div class="card">
@@ -49,34 +55,34 @@
     </div>
 
     <div class="card">
-      <div class="muted">Lap</div>
-      <div class="value">#<span id="lap">0</span> (<span id="lapsRemaining">0</span> left)</div>
+      <div class="muted">Current / Total Laps</div>
+      <div class="value">#<span id="lap">0</span> / <span id="totalLaps">0</span></div>
+      <div class="small muted"><span id="lapsRemaining">0</span> laps remaining</div>
     </div>
 
     <div class="card">
       <div class="muted">Fuel</div>
       <div class="value"><span id="fuelPct">0</span>%</div>
-      <div class="small muted">raw: <span id="fuelRaw">0.0</span></div>
+      <div class="small muted">raw: <span id="fuelRaw">0.0</span> L</div>
     </div>
 
     <div class="card">
-      <div class="muted">Best Decision</div>
-      <div id="decision" class="pill" data-a="maintain">Maintain Speed</div>
+      <div class="muted">Recommended Decision</div>
+      <div id="decision" class="pill" data-a="2">Coast</div>
     </div>
-  </div>
-
+  </div> 
   <div class="grid">
-    <!-- Left column: time series charts -->
-    <div class="vstack">
-      <div class="card"><canvas id="speedChart"></canvas></div>
-      <div class="card"><canvas id="tireChart"></canvas></div>
-      <div class="card"><canvas id="fuelChart"></canvas></div>
+    <div class="chart-grid">
+        <div class="card"><canvas id="speedChart"></canvas></div>
+        <div class="card"><canvas id="tireChart"></canvas></div>
+        <div class="card"><canvas id="fuelChart"></canvas></div>
+        <div class="card">
+            <canvas id="trackCanvas"></canvas>
+        </div>
     </div>
 
-    <!-- Right column: context + control outputs -->
     <div class="vstack">
       <div class="card"><canvas id="radiiChart"></canvas></div>
-      <div class="card"><canvas id="ctrlChart"></canvas></div>
       <div class="card">
         <div class="muted">Action ticker (last ~10s)</div>
         <div id="actionTicker" class="row"></div>
@@ -87,33 +93,41 @@
 <script>
 // =====================
 // Config & helpers
+// !! YOU MUST SET THESE to match your config.py !!
 // =====================
 const CFG = {
+  // --- De-normalization constants (from config.py) ---
+  MAX_SPEED_MPH: 200.0,       // MAX_SPEED from config.py
+  MAX_FUEL_LITERS: 100.0,     // MAX_FUEL_LITERS from config.py
+  TOTAL_LAPS: 20,             // TOTAL_LAPS from config.py
+  LAP_DISTANCE_M: 3200.0,     // Should be 1600 * 2.0 based on previous info
+
+  // --- Frontend config ---
   WINDOW_SECONDS: 10,          // time-series window size
   TARGET_HZ: 10,               // expected frame rate
-  TANK_CAPACITY: 50.0,         // adjust to your sim's units
-  TRACK_LENGTH_M: 3200,        // set to enable client-side progress calc
-  WS_PATH: `ws://${location.hostname}:8000/ws`,
-  HISTORY_URL: `http://${location.hostname}:8000/history?seconds=10`,
-  DEADZONE: 0.3,               // accel deadzone for UI labeling
+  WS_PATH: `ws://localhost:8000/ws`,
+  HISTORY_URL: `http://localhost:8000/history?seconds=10`,
 };
-const MAX_POINTS = CFG.WINDOW_SECONDS * CFG.TARGET_HZ;
+// --- End Config ---
+
+const MPS_PER_MPH = 0.44704;
+const MAX_POINTS = CFG.WINDOW_SECONDS * CFG.TARGET_HZ - 2;
+const MAX_SPEED_MPS = CFG.MAX_SPEED_MPH * MPS_PER_MPH;
+const MAX_SPEED_KMH = MAX_SPEED_MPS * 3.6;
+
+const ACTION_MAP = {
+  0: { label: 'Accel', badge: 'A', key: '0' },
+  1: { label: 'Brake', badge: 'B', key: '1' },
+  2: { label: 'Coast', badge: 'C', key: '2' },
+  3: { label: 'Pit Stop', badge: 'P', key: '3' },
+};
+function getActionInfo(actionInt) {
+  return ACTION_MAP[actionInt] || { label: `Unknown (${actionInt})`, badge: '?', key: '' };
+}
 
 function clamp(x, lo, hi){ return Math.max(lo, Math.min(hi, x)); }
 function clamp01(x){ return clamp(x, 0, 1); }
 function fmt(n, d=1){ return Number(n).toFixed(d); }
-
-function actionFromAccel(a){
-  if (a > CFG.DEADZONE) return 'speed_up';
-  if (a < -CFG.DEADZONE) return 'slow_down';
-  return 'maintain';
-}
-function labelFromAction(k){
-  if(k==='speed_up') return 'Speed Up';
-  if(k==='slow_down') return 'Slow Down';
-  if(k==='maintain') return 'Maintain Speed';
-  return k||'';
-}
 
 // =====================
 // DOM elements
@@ -121,33 +135,29 @@ function labelFromAction(k){
 const el = {
   progressPct: document.getElementById('progressPct'),
   progressBar: document.getElementById('progressBar'),
-  progressHint: document.getElementById('progressHint'),
   speed: document.getElementById('speed'),
-  maxSpeed: document.getElementById('maxSpeed'),
   distPit: document.getElementById('distPit'),
   lap: document.getElementById('lap'),
+  totalLaps: document.getElementById('totalLaps'),
   lapsRemaining: document.getElementById('lapsRemaining'),
   fuelPct: document.getElementById('fuelPct'),
   fuelRaw: document.getElementById('fuelRaw'),
   decision: document.getElementById('decision'),
   ticker: document.getElementById('actionTicker'),
 };
+el.totalLaps.textContent = CFG.TOTAL_LAPS;
 
 // =====================
 // Charts (Chart.js)
 // =====================
 const labels = [];
-// speed
-const speedData = []; const maxSpeedData = [];
-// tires
+const speedData = [];
 const twFL = [], twFR = [], twRL = [], twRR = [];
-// fuel (percent 0..100)
 const fuelPctData = [];
-// radii
 const r20 = [], r50 = [], r100 = [];
 
 function trimBuffers(){
-  const arrays = [labels, speedData, maxSpeedData, twFL, twFR, twRL, twRR, fuelPctData, r20, r50, r100];
+  const arrays = [labels, speedData, twFL, twFR, twRL, twRR, fuelPctData, r20, r50, r100];
   arrays.forEach(arr => { while(arr.length > MAX_POINTS) arr.shift(); });
 }
 
@@ -167,12 +177,9 @@ function makeLine(ctx, title, datasets, yOpts={}){
 
 const speedChart = makeLine(
   document.getElementById('speedChart').getContext('2d'),
-  'Speed (m/s)',
-  [
-    { label: 'Current Speed (m/s)', data: speedData },
-    { label: 'Max Safe (m/s)', data: maxSpeedData }
-  ],
-  { ticks: { callback: (v) => v + ' m/s' } }
+  'Speed (km/h)',
+  [ { label: 'Current Speed (km/h)', data: speedData, borderColor: '#3b82f6', backgroundColor: '#3b82f630', fill: true } ],
+  { min: 0, max: MAX_SPEED_KMH, ticks: { callback: (v) => v + ' km/h' } }
 );
 
 const tireChart = makeLine(
@@ -198,68 +205,93 @@ const radiiChart = makeLine(
   document.getElementById('radiiChart').getContext('2d'),
   'Turn Radius (m)',
   [
-    { label: '20 m ahead', data: r20 },
-    { label: '50 m ahead', data: r50 },
-    { label: '100 m ahead', data: r100 },
+    { label: '50 m ahead', data: r20 },
+    { label: '100 m ahead', data: r50 },
+    { label: '200 m ahead', data: r100 },
   ],
-  { ticks: { callback: (v) => v + ' m' } }
+  { type: 'logarithmic', ticks: { callback: (v) => fmt(v,0) + ' m' } }
 );
 
-// Control outputs bar chart (acceleration & pit chance)
-const ctrlCtx = document.getElementById('ctrlChart').getContext('2d');
-const ctrlData = [0, 0]; // [accel%, pit%]
-const ctrlChart = new Chart(ctrlCtx, {
-  type: 'bar',
-  data: { labels: ['Acceleration (%)', 'Pit chance (%)'], datasets: [{ label: 'Control', data: ctrlData }] },
-  options: {
-    animation:false, responsive:true,
-    scales: { y: { min: -100, max: 100, ticks: { callback: (v)=> v + '%' } } },
-    plugins:{ legend:{display:false}, title:{display:true, text:'Decision Outputs'} }
+// =====================
+// Track Visualization
+// =====================
+const trackCanvas = document.getElementById('trackCanvas');
+trackCanvas.width = trackCanvas.clientWidth;
+trackCanvas.height = trackCanvas.clientHeight;
+const ctxTrack = trackCanvas.getContext('2d');
+
+let track_data = [];
+let trackReady = false;
+let trackBounds = null;
+
+// Load track data once at startup
+async function loadTrackData() {
+  try {
+    const res = await fetch('track_data.json');
+    track_data = await res.json();
+    if (Array.isArray(track_data) && track_data.length > 1) {
+      const xs = track_data.map(p => p.x);
+      const ys = track_data.map(p => p.y);
+      const minX = Math.min(...xs), maxX = Math.max(...xs);
+      const minY = Math.min(...ys), maxY = Math.max(...ys);
+      trackBounds = { minX, maxX, minY, maxY };
+      trackReady = true;
+      drawTrack(0); // Draw initial static track
+    } else {
+      console.warn("Track data empty or invalid");
+    }
+  } catch (e) {
+    console.error("Failed to load track_data.json", e);
   }
-});
-function updateControls(decision){
-  const accelPct = clamp(decision.accel ?? 0, -1, 1) * 100;
-  const pitPct = clamp01(decision.pit_prob ?? 0) * 100;
-  ctrlData[0] = accelPct;
-  ctrlData[1] = pitPct;
-  ctrlChart.update('none');
 }
 
-// =====================
-// Track progress estimator (optional)
-// =====================
-let progress_s = 0;        // accumulated distance along track (m)
-let lastTs = null;         // seconds
-function estimateProgress(state, ts){
-  if(CFG.TRACK_LENGTH_M==null){
-    el.progressPct.textContent = '—%';
-    el.progressBar.style.width = '0%';
-    el.progressHint.textContent = 'Set TRACK_LENGTH_M to enable';
-    lastTs = ts; // avoid huge dt later
-    return;
-  }
-  if(lastTs!=null && ts>lastTs){
-    const dt = ts - lastTs; // seconds
-    progress_s += state.current_speed * dt; // naive integration
-    if(progress_s >= CFG.TRACK_LENGTH_M) progress_s %= CFG.TRACK_LENGTH_M;
-  }
-  const pct = Math.max(0, Math.min(1, progress_s / CFG.TRACK_LENGTH_M)) * 100;
-  el.progressPct.textContent = `${pct.toFixed(0)}%`;
-  el.progressBar.style.width = `${pct}%`;
-  el.progressHint.textContent = '';
-  lastTs = ts;
+// Draw track and car
+function drawTrack(progress) {
+  if (!trackReady) return;
+
+  const { minX, maxX, minY, maxY } = trackBounds;
+  const w = trackCanvas.width = trackCanvas.clientWidth;
+  const h = trackCanvas.height = trackCanvas.clientHeight;
+  ctxTrack.clearRect(0, 0, w, h);
+
+  const pad = 10;
+  const sx = x => pad + ((x - minX) / (maxX - minX)) * (w - 2 * pad);
+  const sy = y => h - (pad + ((y - minY) / (maxY - minY)) * (h - 2 * pad));
+
+  // Draw track line
+  ctxTrack.beginPath();
+  ctxTrack.lineWidth = 2;
+  ctxTrack.strokeStyle = '#999';
+  ctxTrack.moveTo(sx(track_data[0].x), sy(track_data[0].y));
+  for (const p of track_data) ctxTrack.lineTo(sx(p.x), sy(p.y));
+  ctxTrack.stroke();
+
+  // Draw moving car
+  const idx = progress * (track_data.length - 1);
+  const low = Math.floor(idx);
+  const high = Math.min(track_data.length - 1, low + 1);
+  const ratio = idx - low;
+  const x = track_data[low].x + ratio * (track_data[high].x - track_data[low].x);
+  const y = track_data[low].y + ratio * (track_data[high].y - track_data[low].y);
+
+  ctxTrack.beginPath();
+  ctxTrack.fillStyle = '#3b82f6';
+  ctxTrack.arc(sx(x), sy(y), 6, 0, Math.PI * 2);
+  ctxTrack.fill();
 }
+
+// Load data immediately
+loadTrackData();
 
 // =====================
 // Action ticker
 // =====================
-function pushActionTick(action){
+function pushActionTick(actionInfo){
   const dot = document.createElement('span');
   dot.className = 'pill';
-  dot.dataset.a = action;
-  const badgeMap = { speed_up: '↑', slow_down: '↓', maintain: '→' };
-  dot.textContent = badgeMap[action] || action;
-  dot.title = labelFromAction(action);
+  dot.dataset.a = actionInfo.key;
+  dot.textContent = actionInfo.badge;
+  dot.title = actionInfo.label;
   el.ticker.appendChild(dot);
   while(el.ticker.children.length > MAX_POINTS) el.ticker.removeChild(el.ticker.firstChild);
 }
@@ -286,53 +318,75 @@ function connect(){
   ws.onclose = (e)=>{ console.warn('[ws] closed', e.code, e.reason); wsTimer = setTimeout(connect, 500); };
 }
 
+// =============================================
+// == CORE DATA MAPPING: Apply Frame (UPDATED)
+// =============================================
 function applyFrame(fr){
   // Contract check
-  if(!fr || !fr.state || !fr.decision) return;
-  const s = fr.state;
+  if(!fr || !fr.state || !fr.state.state_vector || fr.decision == null || fr.distance_on_lap == null) return;
+
+  const s = fr.state.state_vector;
   const t = fr.ts;
   const label = new Date(t * 1000).toLocaleTimeString();
 
-  // KPIs
-  el.speed.textContent = fmt(s.current_speed);
-  el.maxSpeed.textContent = fmt(s.max_speed);
-  el.distPit.textContent = fmt(s.distance_to_pit);
-  el.lap.textContent = fr.lap ?? '—';
-  el.lapsRemaining.textContent = s.laps_remaining ?? '—';
+  // --- De-normalize data ---
+  const current_speed_mps = s[0] * MAX_SPEED_MPS;
+  const current_speed_kmh = current_speed_mps * 3.6;
+  const fuel_pct_01 = s[1];
+  const tire_fl = s[2];
+  const tire_fr = s[3];
+  const tire_rl = s[4];
+  const tire_rr = s[5];
+  const laps_remaining = Math.round(s[6] * CFG.TOTAL_LAPS);
+  const dist_to_pit = s[7] * CFG.LAP_DISTANCE_M;
+  const radius_20m = Math.expm1(s[8]);
+  const radius_50m = Math.expm1(s[9]);
+  const radius_100m = Math.expm1(s[10]);
 
-  const fuelPct = clamp01(s.current_fuel / CFG.TANK_CAPACITY);
-  el.fuelPct.textContent = (fuelPct*100).toFixed(0);
-  el.fuelRaw.textContent = fmt(s.current_fuel);
+  const distance_on_lap = fr.distance_on_lap;
+  const current_lap_num = fr.lap ?? '—';
 
-  // Decision pill + ticker (derived from accel with deadzone)
-  const accel = Number(fr.decision.accel ?? 0);
-  const actionKey = actionFromAccel(accel);
-  el.decision.dataset.a = actionKey;
-  el.decision.textContent = labelFromAction(actionKey);
-  pushActionTick(actionKey);
+  // --- Update KPIs ---
+  el.speed.textContent = fmt(current_speed_kmh);
+  el.distPit.textContent = fmt(dist_to_pit);
+  el.lap.textContent = current_lap_num;
+  el.lapsRemaining.textContent = laps_remaining;
 
-  // Controls bar
-  updateControls(fr.decision);
+  const fuelPct100 = clamp01(fuel_pct_01) * 100;
+  el.fuelPct.textContent = fmt(fuelPct100, 0);
+  el.fuelRaw.textContent = fmt(fuel_pct_01 * CFG.MAX_FUEL_LITERS);
 
-  // Time-series buffers
+  // --- Update Decision Pill + Ticker ---
+  const actionInt = fr.decision.action;
+  const actionInfo = getActionInfo(actionInt);
+  el.decision.dataset.a = actionInfo.key;
+  el.decision.textContent = actionInfo.label;
+  pushActionTick(actionInfo);
+
+  // --- Update Time-series Buffers ---
   labels.push(label);
-  speedData.push(s.current_speed);
-  maxSpeedData.push(s.max_speed);
-  twFL.push(s.tire_wear.fl); twFR.push(s.tire_wear.fr); twRL.push(s.tire_wear.rl); twRR.push(s.tire_wear.rr);
-  fuelPctData.push(fuelPct*100);
-  r20.push(s.upcoming_track_radius.r20);
-  r50.push(s.upcoming_track_radius.r50);
-  r100.push(s.upcoming_track_radius.r100);
+  speedData.push(current_speed_kmh);
+  twFL.push(tire_fl); twFR.push(tire_fr); twRL.push(tire_rl); twRR.push(tire_rr);
+  fuelPctData.push(fuelPct100);
+  r20.push(radius_20m); r50.push(radius_50m); r100.push(radius_100m);
   trimBuffers();
 
-  // Update charts (no animation)
+  // --- Update Charts ---
   speedChart.update('none');
   tireChart.update('none');
   fuelChart.update('none');
   radiiChart.update('none');
 
-  // Progress
-  estimateProgress(s, t);
+  // --- Update Progress Bar & Percentage ---
+  if(CFG.LAP_DISTANCE_M > 0){
+    const pct = Math.max(0, Math.min(100, (distance_on_lap / CFG.LAP_DISTANCE_M) * 100));
+    el.progressBar.style.width = `${pct}%`;
+    el.progressPct.textContent = fmt(pct, 0); // Update the percentage display
+    drawTrack(pct / 100);
+  } else {
+    el.progressBar.style.width = '0%';
+    el.progressPct.textContent = '—'; // Show placeholder if no lap distance
+  }
 }
 
 // Boot

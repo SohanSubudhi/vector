@@ -19,7 +19,7 @@ MAX_PIT_ENTRY_SPEED_MPH = 40.0
 # --- Track Data ---
 TRACK_FILE = 'track_5762.json' # Path to your track file
 # TRACK_FILE = 'track_data.json' # Path to your track file
-TRACK_POINT_SPACING = 2.0      # Distance between points in meters
+TRACK_POINT_SPACING = 3.2      # Distance between points in meters
 STRAIGHT_RADIUS_THRESHOLD = 10000.0 # Radii larger than this are treated as straights
 
 # --- Car & Physics Constants ---
