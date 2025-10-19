@@ -226,8 +226,7 @@ class F1Env(gym.Env):
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
         super().reset(seed=seed)
-        track_seed = self.np_random.integers(100000)
-        self.track = Track.generate(n_points=300, seed=track_seed)
+        self.track = Track.load_from_file('track_5762.json')
         self.car = F1Car(self.track, self.time_step)
         # MODIFIED: last_action is now a float
         self.last_action = 0.0

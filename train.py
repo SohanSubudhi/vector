@@ -62,11 +62,15 @@ def main():
     eval_env = gym.make('F1Env-v0')
     obs, info = eval_env.reset()
 
+    track = eval_env.unwrapped.track
+    track.export_to_json("evaluated_track.json")
+    print("Track used for evaluation saved to 'evaluated_track.json'")
+
     if run_live_visualization:
         plt.ion()
         fig, ax = plt.subplots(figsize=(12, 9))
         track = eval_env.unwrapped.track
-        track.export_to_json("track_120.json")
+
         track_points = track.spline.evaluate(np.linspace(0, track.n_points, 2000))
         ax.plot(track_points[:, 0], track_points[:, 1], 'k--', alpha=0.4, label="Track Centerline")
         pit_indices = np.where(track.pit_mask)[0]
