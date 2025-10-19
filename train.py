@@ -7,6 +7,8 @@ import json
 import matplotlib.pyplot as plt
 import torch # <--- 1. IMPORT TORCH
 from typing import Callable
+from f1_env import F1Env   # <--- THIS IS THE CORRECT LOCATION
+from track import Track     # <--- Also good practice to have this here
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
     """
@@ -39,7 +41,7 @@ def main():
         vec_env, 
         n_steps=4096, 
         verbose=1, 
-        tensorboard_log="./f1_tensorboard_log/", 
+        # tensorboard_log="./f1_tensorboard_log/", 
         learning_rate=linear_schedule(3e-4),
         device=device # Set the device for training
     )

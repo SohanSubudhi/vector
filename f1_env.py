@@ -50,7 +50,7 @@ class F1Car:
         d_dist_dt = speed
         d_speed_dt = acceleration
         power_draw = 0.01 * max(0, acceleration) + 0.0000025 * speed**3
-        d_fuel_dt = -power_draw
+        d_fuel_dt = -(power_draw * 0.33)
         
         turn_radius = self.track.get_turn_radius(distance)
         lat_accel = speed**2 / abs(turn_radius) if not np.isinf(turn_radius) else 0
@@ -166,8 +166,7 @@ class F1Env(gym.Env):
         current_speed = self.car.state.speed_ms
 
         if current_speed > max_safe_speed_current * 1.05:
-            reward_penalty = -100.0
-            terminated = True
+            reward_penalty = -500.0
 
         # --- REVISED REWARD SHAPING ---
         distance_gain = self.car.distance_traveled_m - prev_distance
@@ -226,7 +225,7 @@ class F1Env(gym.Env):
 
     def reset(self, seed: Optional[int] = None, options: Optional[Dict] = None) -> Tuple[np.ndarray, Dict]:
         super().reset(seed=seed)
-        self.track = Track.load_from_file('track_5762.json')
+        self.track = Track.load_from_json('track_5762.json')
         self.car = F1Car(self.track, self.time_step)
         # MODIFIED: last_action is now a float
         self.last_action = 0.0
