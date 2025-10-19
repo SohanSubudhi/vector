@@ -11,8 +11,44 @@ from typing import Callable
 from f1_env import F1Env
 from track import Track
 import os
-
+import torch as th
 import math
+
+from stable_baselines3.common.buffers import RolloutBuffer
+
+class PatchedRolloutBuffer(RolloutBuffer):
+    """
+    RolloutBuffer that allows manually overriding log_probs safely.
+    Handles NumPy or torch inputs and detaches log_probs automatically.
+    """
+    def add(self, obs, action, reward, done, value, log_prob):
+        # --- Convert obs to torch tensor ---
+        if not isinstance(obs, th.Tensor):
+            obs_tensor = th.as_tensor(obs, dtype=th.float32, device=self.policy.device)
+        else:
+            obs_tensor = obs.to(self.policy.device, dtype=th.float32)
+
+        # --- Convert action to torch tensor ---
+        if not isinstance(action, th.Tensor):
+            action_tensor = th.as_tensor(action, device=self.policy.device)
+        else:
+            action_tensor = action.to(self.policy.device)
+
+        # --- Compute new log_prob if requested ---
+        if log_prob is None:
+            dist = self.policy.get_distribution(obs_tensor)
+            log_prob_tensor = dist.log_prob(action_tensor)
+        else:
+            log_prob_tensor = log_prob
+            if not isinstance(log_prob_tensor, th.Tensor):
+                log_prob_tensor = th.as_tensor(log_prob_tensor, device=self.policy.device)
+
+        # Detach log_prob to avoid SB3 numpy conversion errors
+        log_prob_tensor = log_prob_tensor.detach()
+
+        # --- Call original add ---
+        super().add(obs, action, reward, done, value, log_prob_tensor)
+
 # ==============================================================================
 # ++ NEW: Visualization Callback Class ++
 # This class will periodically run a visualized evaluation during training.
@@ -165,7 +201,9 @@ def cosine_restarts_schedule(initial_value: float, n_restarts: int) -> Callable[
 def main():
     # --- SCRIPT CONFIGURATION ---
     # MODIFIED: Set run_live_visualization to False to avoid running it *after* training
-    run_live_visualization_after_training = False 
+    CONTINUE_TRAINING = True # <-- SET TO TRUE TO LOAD A MODEL
+    MODEL_TO_LOAD = "ppo_f1_driver_final_test_three.zip" # <-- YOUR MODEL FILE
+    run_live_visualization_after_training = True
     eval_track_path = 'track_5762.json'  # <-- The track for visualization
     log_dir = "f1_training_logs/"
     os.makedirs(log_dir, exist_ok=True)
@@ -180,8 +218,8 @@ def main():
     vis_env = gym.make('F1Env-v0', track_filepath=eval_track_path)
 
     # ++ NEW: Instantiate the custom callback
-    # It will run a visualization every 100,000 training steps
-    vis_callback = VisualizationCallback(eval_env=vis_env, eval_freq=50000, log_dir=log_dir, render_every_n_steps=20)
+    # It will run a visualization every 200,000 training steps
+    vis_callback = VisualizationCallback(eval_env=vis_env, eval_freq=2000000, log_dir=log_dir, render_every_n_steps=20)
 
     # device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device} for training.")
@@ -199,19 +237,53 @@ def main():
         "vf_coef": 0.5,
         "policy_kwargs": dict(net_arch=dict(pi=[128, 128], vf=[128, 128]))
     }
-    model = PPO(
-        "MlpPolicy",
-        vec_env,
-        verbose=1,
-        # tensorboard_log="./f1_tensorboard_log/",
-        device=device,
-        **ppo_params
+
+    if CONTINUE_TRAINING:
+        print(f"\n🔄 Continuing training from model: {MODEL_TO_LOAD}")
+        # We need to tell SB3 how to load our custom learning rate functions
+        custom_objects = {
+            "learning_rate": cosine_restarts_schedule(3e-4, n_restarts=4),
+            "clip_range": linear_schedule(0.2),
+        }
+        model = PPO.load(
+            MODEL_TO_LOAD,
+            env=vec_env,
+            device=device,
+            custom_objects=custom_objects
+        )
+        # Ensure the new environment is set for the loaded model
+        model.set_env(vec_env) 
+    else:
+        print("\n✨ Starting new training from scratch...")
+        model = PPO(
+            "MlpPolicy",
+            vec_env,
+            verbose=1,
+            device=device,
+            **ppo_params
+        )
+
+
+    model.rollout_buffer = PatchedRolloutBuffer(
+        model.rollout_buffer.buffer_size,
+        model.rollout_buffer.observation_space,
+        model.rollout_buffer.action_space,
+        device=model.device,
+        gae_lambda=model.rollout_buffer.gae_lambda,
+        gamma=model.rollout_buffer.gamma,
+        n_envs=model.rollout_buffer.n_envs
     )
+    model.rollout_buffer.policy = model.policy  # attach current policy
     
     # ++ NEW: Pass the callback to the learn method
-    model.learn(total_timesteps=200_000, progress_bar=True, callback=vis_callback)
-    
-    model_path = "ppo_f1_driver_final"
+    if CONTINUE_TRAINING:
+        total_timesteps = 400_000
+    else:
+        total_timesteps = 1_000_000
+
+    model.learn(total_timesteps=total_timesteps, progress_bar=True, callback=vis_callback)
+
+    model_path = "ppo_f1_driver_final_test_four"
     model.save(model_path)
     print(f"\n✅ Training complete. Model saved to '{model_path}.zip'")
     vec_env.close()

@@ -68,7 +68,7 @@ class F1Car:
         elif turn_radius < 0: wear_update[[1, 3]] += lat_wear * 1.5; wear_update[[0, 2]] += lat_wear * 0.5
         wear_update[[0, 1]] += long_wear * 1.2
         wear_update[[2, 3]] += long_wear * 0.8
-        d_tires_dt = -wear_update * 1.5
+        d_tires_dt = -wear_update * 1.25
         
         return np.array([d_dist_dt, d_speed_dt, d_fuel_dt, *d_tires_dt])
 
@@ -171,7 +171,7 @@ class F1Car:
 
     def get_max_cornering_speed(self, distance: float, tires_health_percent: np.ndarray) -> float:
         front_tire_health = (tires_health_percent[0] + tires_health_percent[1]) / 2.0
-        grip_factor = np.clip(front_tire_health / 60.0, 0.2, 1.0)
+        grip_factor = np.clip(front_tire_health / 60.0, 0.3, 1.0)
         effective_mu = self.MU_FRICTION * grip_factor
         
         # ++ NEW: Smoothing by sampling multiple points and finding the tightest corner
@@ -245,7 +245,7 @@ class F1Env(gym.Env):
 
         if np.random.rand() < 0.005:
             action[1] = 1.0  # 0.5% chance to “randomly” request pit
-    
+
         prev_fuel = self.car.state.fuel_percent
         prev_tires = np.copy(self.car.state.tires_health_percent)
         
@@ -272,17 +272,17 @@ class F1Env(gym.Env):
         lookahead_speeds = self.car.state.max_safe_speeds_ms
         max_safe_speed_current = lookahead_speeds[0]
         current_speed = self.car.state.speed_ms
-        speed_ratio = current_speed / (max_safe_speed_current + 1e-6)
-        speed_reward = 0.0
-        if speed_ratio > 0.95: speed_reward = -10.0 * ((speed_ratio - 0.95) / 0.10)
-        elif speed_ratio > 0.85: speed_reward = 15 * (1.0 - (0.95 - speed_ratio) / 0.10)
+        speed_aggressiveness = 0.1
+        speed_error = (max_safe_speed_current - current_speed) / max_safe_speed_current
+        if current_speed < max_safe_speed_current * 0.95:
+            speed_reward = math.exp(-speed_aggressiveness * (speed_error**2)) * 0.1
         else:
-            speed_reward = 10.0 * (speed_ratio / 0.85)
+            speed_reward = 0
 
         # 3. Braking Reward
         max_safe_speed_50m_ahead = lookahead_speeds[2]
         is_braking_zone = max_safe_speed_50m_ahead < max_safe_speed_current * 0.9 and current_speed > max_safe_speed_50m_ahead
-        braking_reward = 100 * abs(action[0]) if is_braking_zone and action[0] < -0.1 else 0.0
+        braking_reward = 300 * abs(action[0]) if is_braking_zone and action[0] < -0.1 else 0.0
             
         # 4. Strategic Pitting Reward
         strategic_pitting_reward = 0.0
@@ -304,9 +304,9 @@ class F1Env(gym.Env):
             resource_penalty -= 20.0 * (1.0 - self.car.state.fuel_percent / 40.0)**2
 
         # 6. Penalties for Sliding & Jerk
-        sliding_penalty = -10 * self.car.is_sliding
-        control_jerk = abs(action[0] - self.last_action)
-        smoothness_penalty = -0.001 * control_jerk
+        sliding_penalty = -15 * self.car.is_sliding
+        # control_jerk = abs(action[0] - self.last_action)
+        # smoothness_penalty = -0.001 * control_jerk
         self.last_action = action[0]
 
         # 7. Lap Bonus
@@ -322,13 +322,13 @@ class F1Env(gym.Env):
         is_in_pit_box = self.track.is_at_pit_box(self.car.distance_traveled_m)
         
         if is_stopped and not is_in_pit_box:
-            stopped_penalty = -50.0 # Apply a consistent penalty for every step the car is stopped
+            stopped_penalty = -200.0 # Apply a consistent penalty for every step the car is stopped
 
         # --- Combine all reward components ---
         reward = (progress_reward + speed_reward + braking_reward + 
                 strategic_pitting_reward + resource_penalty + 
-                smoothness_penalty + sliding_penalty + lap_bonus +
-                stopped_penalty + -0.1 * action[1]**2) # <-- Added new penalty here
+                sliding_penalty + lap_bonus +
+                stopped_penalty)
 
         distance_to_pit = self.car.state.distance_to_pit_entry_m
         low_resources = (self.car.state.fuel_percent < 35.0 or np.min(self.car.state.tires_health_percent) < 35.0)
@@ -380,5 +380,5 @@ class F1Env(gym.Env):
 gym.register(
     id='F1Env-v0',
     entry_point='f1_env:F1Env',
-    max_episode_steps=20000,
+    max_episode_steps=40000,
 )
