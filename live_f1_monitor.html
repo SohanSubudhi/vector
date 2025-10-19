@@ -269,6 +269,10 @@
         const loadingIndicator = document.getElementById('loading');
         const loadingText = document.getElementById('loadingText');
 
+        // *** NEW ***: Offscreen canvas for persistent trails
+        const trailCanvas = document.createElement('canvas');
+        const trailCtx = trailCanvas.getContext('2d');
+
         // Track & rendering state (from f1_replay_viewer.html)
         let trackData = [];
         let trackBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 0, height: 0 };
@@ -284,6 +288,7 @@
           wsTimer: null,
           state: null, // Holds latest processed data
           status: 'Connecting...',
+          lastPosition: null, // *** NEW ***: For drawing trails
           el: { // Cached DOM elements
             status: document.getElementById('agent1_status'),
             lap: document.getElementById('agent1_lap'),
@@ -310,6 +315,7 @@
           status: 'Connecting...',
           progress_m: 0, // For progress estimation
           lastTs: null,  // For progress estimation
+          lastPosition: null, // *** NEW ***: For drawing trails
           el: { // Cached DOM elements
             status: document.getElementById('agent2_status'),
             lap: document.getElementById('agent2_lap'),
@@ -424,16 +430,36 @@
         function handleResize() {
             resizeCanvas();
             calculateTransform();
-            draw(); // Redraw with new dimensions
+            if (agent1.state || agent2.state) {
+                // Only redraw if we have active data
+                draw();
+            } else {
+                // Otherwise, just draw the track
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+                drawTrack();
+            }
         }
-
+        
         function resizeCanvas() {
             const dpr = window.devicePixelRatio || 1;
             const rect = canvas.getBoundingClientRect();
+
+            // Resize main canvas
             canvas.width = rect.width * dpr;
             canvas.height = rect.height * dpr;
             ctx.scale(dpr, dpr);
+
+            // *** NEW ***: Resize trail canvas
+            trailCanvas.width = rect.width * dpr;
+            trailCanvas.height = rect.height * dpr;
+            trailCtx.scale(dpr, dpr);
+            
+            // Clear trails on resize and reset last positions
+            agent1.lastPosition = null;
+            agent2.lastPosition = null;
         }
+
 
         function calculateTrackBounds() {
             if (trackData.length === 0) return;
@@ -501,6 +527,7 @@
             console.warn('[Agent1] WebSocket closed', e.code, e.reason);
             updateAgentStatus(agent1, 'connecting', 'Reconnecting...');
             agent1.state = null; // Clear state
+            agent1.lastPosition = null; // *** NEW ***
             draw(); // Redraw to remove car
             agent1.wsTimer = setTimeout(connectAgent1, 1000); // Reconnect
           };
@@ -537,6 +564,7 @@
             agent2.state = null; // Clear state
             agent2.lastTs = null; // Reset estimator
             agent2.progress_m = 0;
+            agent2.lastPosition = null; // *** NEW ***
             draw(); // Redraw to remove car
             agent2.wsTimer = setTimeout(connectAgent2, 1000); // Reconnect
           };
@@ -675,9 +703,17 @@
             ctx.fillStyle = '#111827';
             ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
 
+            // 1. Draw the static track
             drawTrack();
             
-            // Draw cars if they have active state
+            // 2. *** NEW ***: Update and draw trails
+            // This draws the *new* segments to the offscreen trail canvas
+            updateTrail(agent1);
+            updateTrail(agent2);
+            // This draws the entire persistent trail canvas onto the main canvas
+            ctx.drawImage(trailCanvas, 0, 0, canvas.clientWidth, canvas.clientHeight);
+
+            // 3. Draw cars on top of track and trails
             if (agent1.state) {
                 drawCar(agent1);
             }
@@ -698,7 +734,7 @@
 
         /**
          * Draws the static track line.
-         * From f1_replay_viewer.html
+         * *** UPDATED ***: Pit lane is now yellow.
          */
         function drawTrack() {
             if (trackData.length < 2) return;
@@ -743,9 +779,9 @@
                 ctx.stroke();
             });
 
-            // Draw pit lane
-            ctx.strokeStyle = '#6B7280'; // Gray 500
-            ctx.lineWidth = 6 * transform.scale;
+            // *** UPDATED ***: Draw pit lane
+            ctx.strokeStyle = '#EAB308'; // Yellow-500
+            ctx.lineWidth = 10 * transform.scale; // Make it stand out
             pitSegments.forEach(segment => {
                  if (segment.length < 2) return;
                 ctx.beginPath();
@@ -758,16 +794,15 @@
                 ctx.stroke();
             });
         }
-        
-        /**
-         * Draws a single agent's car on the canvas.
-         * Gets (x, y) position by interpolating trackData based on agent's progress_01.
-         */
-        function drawCar(agent) {
-            if (!trackData || trackData.length < 2 || !agent.state) return;
 
-            // Find position on track from progress_01 (0.0 to 1.0)
-            // This logic is adapted from index.html's drawTrack()
+        /**
+         * *** NEW ***
+         * Calculates the car's screen position and angle from its state.
+         * Returns {x, y, angle} or null.
+         */
+        function getCarTransform(agent) {
+            if (!trackData || trackData.length < 2 || !agent.state) return null;
+
             const progress = agent.state.progress_01;
             const idx = progress * (trackData.length - 1);
             const low = Math.floor(idx);
@@ -776,7 +811,7 @@
             
             const p1 = trackData[low];
             const p2 = trackData[high];
-            if (!p1 || !p2) return; // Guard against track data issues
+            if (!p1 || !p2) return null; // Guard against track data issues
 
             // Interpolate position
             const x = p1.x + ratio * (p2.x - p1.x);
@@ -787,10 +822,57 @@
 
             // Transform to canvas coordinates
             const carScreenPos = transformPoint(x, y);
+            return { x: carScreenPos.x, y: carScreenPos.y, angle: angle };
+        }
+
+        /**
+         * *** NEW ***
+         * Draws the latest trail segment for an agent onto the persistent trail canvas.
+         */
+        function updateTrail(agent) {
+            if (!agent.state) {
+                agent.lastPosition = null; // Reset if state is lost
+                return;
+            }
+            
+            const newPos = getCarTransform(agent);
+            if (!newPos) return;
+
+            const lastPos = agent.lastPosition;
+
+            if (lastPos) {
+                // Check for large jump (e.g., lap reset or data glitch)
+                const dist = Math.hypot(newPos.x - lastPos.x, newPos.y - lastPos.y);
+                
+                // Only draw if it's a small, contiguous segment
+                if (dist > 0 && dist < 200) { 
+                    trailCtx.beginPath();
+                    trailCtx.moveTo(lastPos.x, lastPos.y);
+                    trailCtx.lineTo(newPos.x, newPos.y);
+                    trailCtx.strokeStyle = agent.color;
+                    trailCtx.lineWidth = 5 * transform.scale; // Match original f1_replay_viewer
+                    trailCtx.globalAlpha = 0.8; // Match original f1_replay_viewer
+                    trailCtx.lineCap = 'round';
+                    trailCtx.lineJoin = 'round';
+                    trailCtx.stroke();
+                    trailCtx.globalAlpha = 1.0;
+                }
+            }
+            // Store the new position for the next frame
+            agent.lastPosition = { x: newPos.x, y: newPos.y };
+        }
+        
+        /**
+         * Draws a single agent's car on the canvas.
+         * *** UPDATED ***: Now uses getCarTransform()
+         */
+        function drawCar(agent) {
+            const transform = getCarTransform(agent);
+            if (!transform) return; // No state, don't draw
             
             ctx.save();
-            ctx.translate(carScreenPos.x, carScreenPos.y);
-            ctx.rotate(angle);
+            ctx.translate(transform.x, transform.y);
+            ctx.rotate(transform.angle);
             
             // Draw Car Image
             ctx.drawImage(agent.carImage, -CFG.CAR_WIDTH / 2, -CFG.CAR_HEIGHT / 2, CFG.CAR_WIDTH, CFG.CAR_HEIGHT);
