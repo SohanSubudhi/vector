@@ -63,7 +63,7 @@ class F1Car:
         elif turn_radius < 0: wear_update[[1, 3]] += lat_wear * 1.5; wear_update[[0, 2]] += lat_wear * 0.5
         wear_update[[0, 1]] += long_wear * 1.2
         wear_update[[2, 3]] += long_wear * 0.8
-        d_tires_dt = -wear_update
+        d_tires_dt = -wear_update * 2
         
         return np.array([d_dist_dt, d_speed_dt, d_fuel_dt, *d_tires_dt])
 
@@ -167,6 +167,7 @@ class F1Env(gym.Env):
 
         if current_speed > max_safe_speed_current * 1.05:
             reward_penalty = -100.0
+            terminated = True
 
         # --- REVISED REWARD SHAPING ---
         distance_gain = self.car.distance_traveled_m - prev_distance

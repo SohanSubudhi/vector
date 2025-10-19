@@ -5,10 +5,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv
 import numpy as np
 import json
 import matplotlib.pyplot as plt
-
-# Make sure f1_env is in the same directory or accessible
-from f1_env import F1Env
-from track import Track
+import torch # <--- 1. IMPORT TORCH
 from typing import Callable
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
@@ -32,7 +29,20 @@ def main():
     num_cpu = 4
     vec_env = make_vec_env('F1Env-v0', n_envs=num_cpu, vec_env_cls=SubprocVecEnv)
     
-    model = PPO("MlpPolicy", vec_env, n_steps=4096, verbose=1, tensorboard_log="./f1_tensorboard_log/", learning_rate=linear_schedule(3e-4))
+    # <--- 2. DETECT AND SET THE DEVICE (GPU OR CPU)
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device} for training.")
+
+    # <--- 3. PASS THE DEVICE TO THE PPO MODEL
+    model = PPO(
+        "MlpPolicy", 
+        vec_env, 
+        n_steps=4096, 
+        verbose=1, 
+        tensorboard_log="./f1_tensorboard_log/", 
+        learning_rate=linear_schedule(3e-4),
+        device=device # Set the device for training
+    )
     
     model.learn(total_timesteps=200_000, progress_bar=True)
     
@@ -42,6 +52,7 @@ def main():
     vec_env.close()
 
     # --- 2. Evaluating the Trained Agent ---
+    # (The rest of the evaluation script remains unchanged)
     if run_live_visualization:
         print("\n🏁 Evaluating trained agent with live visualization...")
     else:
@@ -99,20 +110,18 @@ def main():
             car_dot.set_data([car_pos[0]], [car_pos[1]])
             
             action_str = "Coasting"
-            # MODIFIED: action[0] is the throttle/brake value
             if action[0] > 0.05:
                 action_str = f"Throttle: {action[0]*100:3.0f}%"
             elif action[0] < -0.05:
                 action_str = f"Brake:    {-action[0]*100:3.0f}%"
             
-            # MODIFIED: Display the car's status from the info dict
             car_status_str = info.get("status", "UNKNOWN")
 
             text_str = (
                 f"--- CAR STATE ---\n"
                 f" Time: {time_str}\n"
                 f" Lap: {info.get('laps', 0)}\n"
-                f" Status: {car_status_str}\n" # <-- Changed from Pit Intent
+                f" Status: {car_status_str}\n"
                 f" Speed: {speed_kmh:5.1f} km/h\n"
                 f" Max Safe Speed: {info.get('max_safe_speed_kmh', 0.0):5.1f} km/h\n"
                 f" Fuel: {fuel_pct:5.1f}%\n"
@@ -125,7 +134,6 @@ def main():
             fig.canvas.draw()
             fig.canvas.flush_events()
 
-        # MODIFIED: Log data for replay with new action format and status
         step_data = {
             "time": float(sim_time_s),
             "position": info.get("position", [0, 0]),
