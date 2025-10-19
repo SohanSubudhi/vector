@@ -1,5 +1,8 @@
-numpy
+numpy~=2.3.4
 torch
-matplotlib
+matplotlib~=3.10.7
 argparse
 typing
+uvicorn~=0.38.0
+fastapi~=0.119.0
+pydantic~=2.12.3
