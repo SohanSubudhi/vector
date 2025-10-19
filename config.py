@@ -8,46 +8,54 @@ import numpy as np
 
 # --- Simulation Constants ---
 TIME_STEP = 0.1  # seconds
-TOTAL_LAPS = 5
-PIT_STOP_TIME = 20.0  # seconds
+TOTAL_LAPS = 20
+PIT_STOP_TIME = 15.0  # seconds (Set to 20s to make pitting a net negative)
 MAX_SPEED = 200.0 # mph (Used for normalization)
+F1_TOP_SPEED_MPH = 220.0 # Realistic F1 Top Speed (Hard Cap)
 GRAVITY = 9.81 # m/s^2
+PIT_ENTRY_RANGE_METERS = 150.0  # Last 150m of track (User Request)
+MAX_PIT_ENTRY_SPEED_MPH = 40.0   
 
 # --- Track Data ---
-TRACK_FILE = 'track_data.json' # <-- NEW: Path to your track file
-TRACK_POINT_SPACING = 2.0      # <-- NEW: Distance between points in meters
-STRAIGHT_RADIUS_THRESHOLD = 10000.0 # <-- NEW: Radii larger than this are treated as straights
-
-# (We removed TRACK_SEGMENTS, LAP_DISTANCE, PIT_ENTRY_DISTANCE, and PIT_ENTRY_BOX)
-# (LAP_DISTANCE and PIT_ENTRY_DISTANCE will now be calculated in the environment)
+TRACK_FILE = 'track_5762.json' # Path to your track file
+# TRACK_FILE = 'track_data.json' # Path to your track file
+TRACK_POINT_SPACING = 2.0      # Distance between points in meters
+STRAIGHT_RADIUS_THRESHOLD = 10000.0 # Radii larger than this are treated as straights
 
 # --- Car & Physics Constants ---
 # Performance lookup tables: (Speed_mph, Value)
-ACCEL_CURVE = [(0, 10.0), (50, 7.5), (100, 4.0), (150, 1.5), (200, 0.0)] # (mph, mph/s)
-BRAKE_CURVE = [(0, -15.0), (200, -15.0)] # (mph, mph/s)
-COAST_CURVE = [(0, 0.0), (50, -1.0), (100, -3.0), (150, -6.0), (200, -8.0)] # (mph, mph/s)
+# Aggressive F1-style acceleration (values in mph per second)
+ACCEL_CURVE = [(0, 45.0), (50, 40.0), (100, 30.0), (150, 22.0), (200, 15.0)] 
+# Aggressive F1-style braking
+BRAKE_CURVE = [(0, -35.0), (200, -35.0)] # (mph, mph/s)
+COAST_CURVE = [(0, 0.0), (50, -0.5), (100, -1.5), (150, -3.0), (200, -4.0)] # (mph, mph/s)
 
 # Vehicle Properties
 BASE_MASS = 700.0  # kg (dry mass)
 MAX_FUEL_MASS = 75.0  # kg
 MAX_FUEL_LITERS = 100.0 # Liters
-
-# Consumption & Wear Factors (TUNE THESE!)
-FUEL_PER_ACCEL_STEP = 0.1   # Liters per step
-FUEL_PER_COAST_STEP = 0.01  # Liters per step
-TIRE_WEAR_PER_METER = 0.000001 # Base wear
-TIRE_WEAR_BRAKE_FACTOR = 0.0001 # Extra wear per step
-TIRE_WEAR_CORNER_FACTOR = 0.0005 # Scales with lateral_g
-GRIP_WEAR_EFFECT = 0.7  # 1.0 = 100% grip loss at 1.0 wear. 0.7 = 70% loss.
+GRIP_MULTIPLIER = 3.0   # Simulates F1-level downforce
+GRIP_WEAR_EFFECT = 0.9  # Makes 1.0 wear reduce 90% of mechanical grip
 MASS_EFFECT_ON_ACCEL = 0.5 # Scales how much fuel mass affects accel
 
+# Consumption & Wear Factors (TUNE THESE!) - Adjusted for feasibility
+FUEL_PER_ACCEL_STEP = 0.01   # Liters per step
+FUEL_PER_COAST_STEP = 0.001  # Liters per step
+TIRE_WEAR_PER_METER = 0.00008 # Base wear
+TIRE_WEAR_BRAKE_FACTOR = 0.00005 # Extra wear per step
+TIRE_WEAR_CORNER_FACTOR = 0.00005 # Scales with lateral_g
+
 # --- Reward Function Constants (TUNE THESE!) ---
-R_DIST_FACTOR = 1.0            # Reward for distance covered
-R_FUEL_PENALTY = 0.1           # Penalty per liter of fuel used
-R_TIRE_PENALTY = 100.0         # Penalty per unit of tire wear
-R_BAD_ACTION_PENALTY = 10.0    # Penalty for accel at v_max
+R_DIST_FACTOR = 1.0            # Re-balanced (was too high)
+R_FUEL_PENALTY = 0.1           
+R_TIRE_PENALTY = 10.0          
+R_BAD_ACTION_PENALTY = 10.0    # Re-balanced (make penalty scary)
 R_LAP_BONUS = 500.0
 R_RACE_FINISH_BONUS = 10000.0
+
+# --- NEW CONSTANTS FOR SPEED BONUS ---
+F1_TARGET_SPEED_MPH = 100.0      # Speed (in mph) we want to reward
+R_F1_SPEED_BONUS = 0.5         # Re-balanced (was too high)
 
 # --- DQN Agent Hyperparameters ---
 STATE_DIM = 11  # [speed, fuel, 4x tires, laps_rem, dist_to_pit, 3x radii]
@@ -58,8 +66,8 @@ GAMMA = 0.99  # Discount factor for future rewards
 BATCH_SIZE = 64
 MEMORY_SIZE = 100000  # Replay buffer size
 
-EPSILON_START = 1.0
+EPSILON_START = 1.0 # Start with exploration
 EPSILON_END = 0.05
-EPSILON_DECAY = 50000
+EPSILON_DECAY = 25 # Decay over 1500 episodes
 
 TARGET_UPDATE_FREQ = 20  # episodes
