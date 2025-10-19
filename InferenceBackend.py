@@ -51,14 +51,15 @@ except ImportError:
 # =========================
 # Config (env tunables)
 # =========================
-FPS = float(os.getenv("FPS", "10"))                 # ticks per second
+FPS = float(os.getenv("FPS", "20"))                 # ticks per second
 HISTORY_SECONDS = int(os.getenv("HISTORY", "120"))  # history window for /history
-PORT = int(os.getenv("PORT", "8000"))
+PORT = int(os.getenv("PORT", "8001"))
 TOTAL_LAPS = 10 # Define total laps for the race
 
 # --- Model Path Config ---
 # Your train.py saves a .zip file, not .pth
-MODEL_PATH = "ppo_f1_driver_lookahead.zip" # Path to your .zip file
+# MODEL_PATH = "ppo_f1_driver_final.zip" # Path to your .zip file
+MODEL_PATH = "ppo_f1_driver_final_test_three.zip" # Path to your .zip file
 
 
 # =========================
@@ -252,7 +253,10 @@ def env_step(obs: Obs, decision: Decision) -> Obs:
     
     # 2. Extract the action from the model's decision
     throttle_brake = decision.accel
-    action_array = np.array([throttle_brake], dtype=np.float32)
+    pit_intent = decision.pit_prob  # or 1.0 if pit_prob > 0.5 else 0.0, depending on how your env interprets it
+
+    action_array = np.array([throttle_brake, pit_intent], dtype=np.float32)
+
     
     # 3. Step the simulation
     # We get back the gym-style observation, reward, etc.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Race Dashboard</title>
+  <title>Race Dashboard (PPO)</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root { --gap: 14px; }
@@ -19,6 +19,7 @@
     .pill[data-a="maintain"] { background:#eef2ff; }
 
     .grid { display: grid; grid-template-columns: 2fr 1fr; gap: var(--gap); }
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap); }
     canvas { width: 100%; height: 260px; }
     .vstack { display: grid; gap: var(--gap); }
     .progress { width: 100%; height: 8px; background: #f0f0f0; border-radius: 999px; overflow:hidden; margin-top:6px; }
@@ -28,9 +29,8 @@
   </style>
 </head>
 <body>
-  <h1>Race Dashboard</h1>
+  <h1>Race Dashboard (PPO)</h1>
 
-  <!-- Top status strip -->
   <div class="cards">
     <div class="card">
       <div class="muted">Track Progress</div>
@@ -66,25 +66,22 @@
   </div>
 
   <div class="grid">
-    <!-- Left column: time series charts -->
-    <div class="vstack">
+    <div class="chart-grid">
       <div class="card"><canvas id="speedChart"></canvas></div>
       <div class="card"><canvas id="tireChart"></canvas></div>
       <div class="card"><canvas id="fuelChart"></canvas></div>
+      <div class="card"><canvas id="ctrlChart"></canvas></div>
     </div>
 
-    <!-- Right column: context + control outputs -->
     <div class="vstack">
       <div class="card"><canvas id="radiiChart"></canvas></div>
-      <div class="card"><canvas id="ctrlChart"></canvas></div>
       <div class="card">
         <div class="muted">Action ticker (last ~10s)</div>
         <div id="actionTicker" class="row"></div>
       </div>
     </div>
   </div>
-
-<script>
+  <script>
 // =====================
 // Config & helpers
 // =====================
@@ -93,8 +90,8 @@ const CFG = {
   TARGET_HZ: 10,               // expected frame rate
   TANK_CAPACITY: 50.0,         // adjust to your sim's units
   TRACK_LENGTH_M: 3200,        // set to enable client-side progress calc
-  WS_PATH: `ws://${location.hostname}:8000/ws`,
-  HISTORY_URL: `http://${location.hostname}:8000/history?seconds=10`,
+  WS_PATH: `ws://localhost:8001/ws`,
+  HISTORY_URL: `http://localhost:8001/history?seconds=10`,
   DEADZONE: 0.3,               // accel deadzone for UI labeling
 };
 const MAX_POINTS = CFG.WINDOW_SECONDS * CFG.TARGET_HZ;
@@ -206,6 +203,7 @@ const radiiChart = makeLine(
 );
 
 // Control outputs bar chart (acceleration & pit chance)
+// NOTE: This chart is now in the chart-grid, but the JS logic is unchanged.
 const ctrlCtx = document.getElementById('ctrlChart').getContext('2d');
 const ctrlData = [0, 0]; // [accel%, pit%]
 const ctrlChart = new Chart(ctrlCtx, {
