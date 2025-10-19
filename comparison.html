@@ -895,8 +895,8 @@
 
     </script>
 
-    <!-- Strategy Insights Button -->
-    <!-- <button id="insightsBtn" style="
+
+    <button id="insightsBtn" style="
         position: fixed;
         bottom: 24px;
         right: 24px;
@@ -912,14 +912,19 @@
         z-index: 1000;
     ">
     💡 Strategy Insights
-    </button> -->
+    </button>
 
     <script>
     const GEMINI_API_KEY = "AIzaSyAei8POTagGH93Bk1C_SY8HU2VjwKD_7R4";
     const ELEVEN_API_KEY = "b73e868ba9b07b7fa3a4939108c7c63ea157e82da183e04605f308597b4d11b0";
     const ELEVEN_VOICE_ID = "lUTamkMw7gOzZbFIwmq4"; // e.g. "Rachel"
 
+    const insightsBtn = document.getElementById("insightsBtn"); // Get a reference to the button
+
     async function getRaceInsights() {
+        insightsBtn.disabled = true; // Disable the button immediately
+        insightsBtn.textContent = "Generating..."; // Optional: provide user feedback
+
         try {
             // Collect latest data snapshot
             const blueData = agent1.state || {};
@@ -927,7 +932,7 @@
 
             const prompt = `
     You are a race strategy AI analyst. Compare the following two cars' current data and suggest race strategy insights (pit stop timing, tire usage, fuel, speed pacing, etc.). 
-    Keep the tone professional and concise.
+    Keep the tone professional and concise. Limit your response to 20 words. You are speaking to a race (strategy) engineer.
 
     Blue Car (DQN): ${JSON.stringify(blueData, null, 2)}
     Red Car (PPO): ${JSON.stringify(redData, null, 2)}
@@ -935,10 +940,10 @@
 
             // --- Call Gemini ---
             const geminiResponse = await fetch(
-                "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + GEMINI_API_KEY,
+                "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
                 {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "application/json", 'x-goog-api-key': GEMINI_API_KEY },
                     body: JSON.stringify({
                         contents: [{ role: "user", parts: [{ text: prompt }] }]
                     })
@@ -972,8 +977,13 @@
         } catch (err) {
             console.error("Error generating insights:", err);
             alert("Could not fetch strategy insights. Check console for details.");
+        } finally {
+            insightsBtn.disabled = false; // Re-enable the button in the 'finally' block
+            insightsBtn.innerHTML = "💡 Strategy Insights"; // Restore original text
         }
     }
+
+    insightsBtn.addEventListener("click", getRaceInsights);
 
     document.getElementById("insightsBtn").addEventListener("click", getRaceInsights);
     </script>
