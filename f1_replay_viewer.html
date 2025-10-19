@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 Race Replay Viewer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+        }
+        .data-card {
+            background-color: rgba(31, 41, 55, 0.8); /* bg-gray-800 with opacity */
+            backdrop-filter: blur(10px);
+        }
+        .tire-bar-outer {
+            background-color: #374151; /* bg-gray-700 */
+        }
+        .tire-bar-inner {
+            transition: width 0.3s ease-in-out;
+        }
+        /* Custom styles for range input */
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 6px;
+            background: #374151; /* bg-gray-700 */
+            border-radius: 5px;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity .2s;
+        }
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            background: #ef4444; /* bg-red-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #111827;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 18px;
+            height: 18px;
+            background: #ef4444; /* bg-red-500 */
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #111827;
+        }
+    </style>
+</head>
+<body class="text-gray-200 overflow-hidden flex flex-col h-screen">
+
+    <!-- Header -->
+    <header class="p-4 bg-gray-800/50 backdrop-blur-sm border-b border-gray-700">
+        <h1 class="text-2xl font-bold text-center text-red-500">Formula 1 Lap Replay</h1>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-grow flex relative">
+        <canvas id="raceCanvas" class="absolute top-0 left-0 w-full h-full"></canvas>
+
+        <!-- Data Overlay -->
+        <div class="absolute top-4 left-4 p-4 rounded-lg shadow-lg data-card w-64">
+            <h2 class="text-lg font-semibold border-b border-gray-600 pb-2 mb-3">Telemetry</h2>
+            <div class="space-y-3 text-sm">
+                <div class="flex justify-between items-baseline">
+                    <span class="font-medium text-gray-400">Speed</span>
+                    <span id="speedDisplay" class="font-bold text-2xl text-white">0 km/h</span>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="font-medium text-gray-400">Fuel</span>
+                    <div class="w-3/5 tire-bar-outer rounded-full h-2.5">
+                        <div id="fuelBar" class="bg-yellow-500 h-2.5 rounded-full" style="width: 100%"></div>
+                    </div>
+                </div>
+                 <!-- Tire Data -->
+                <div>
+                    <h3 class="font-medium text-gray-400 mb-2">Tires</h3>
+                    <div class="grid grid-cols-2 gap-x-4 gap-y-2">
+                        <!-- Front Left -->
+                        <div class="flex items-center space-x-2">
+                            <span class="w-6 text-xs">FL</span>
+                            <div class="w-full tire-bar-outer rounded-full h-2">
+                                <div id="tireFL" class="h-2 rounded-full" style="width: 100%"></div>
+                            </div>
+                        </div>
+                        <!-- Front Right -->
+                        <div class="flex items-center space-x-2">
+                            <span class="w-6 text-xs">FR</span>
+                            <div class="w-full tire-bar-outer rounded-full h-2">
+                                <div id="tireFR" class="h-2 rounded-full" style="width: 100%"></div>
+                            </div>
+                        </div>
+                        <!-- Rear Left -->
+                        <div class="flex items-center space-x-2">
+                            <span class="w-6 text-xs">RL</span>
+                            <div class="w-full tire-bar-outer rounded-full h-2">
+                                <div id="tireRL" class="h-2 rounded-full" style="width: 100%"></div>
+                            </div>
+                        </div>
+                        <!-- Rear Right -->
+                        <div class="flex items-center space-x-2">
+                             <span class="w-6 text-xs">RR</span>
+                            <div class="w-full tire-bar-outer rounded-full h-2">
+                                <div id="tireRR" class="h-2 rounded-full" style="width: 100%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Loading Indicator -->
+        <div id="loading" class="absolute inset-0 bg-gray-900/80 flex items-center justify-center">
+            <div class="text-center">
+                <svg id="loadingSpinner" class="animate-spin h-10 w-10 text-red-500 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p id="loadingText" class="mt-4 text-lg">Loading Race Data...</p>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Controls -->
+    <footer class="p-4 data-card border-t border-gray-700 w-full z-10">
+        <div class="max-w-4xl mx-auto flex items-center space-x-4">
+            <button id="playPauseBtn" class="p-2 rounded-full bg-red-500 hover:bg-red-600 transition text-white">
+                <svg id="playIcon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="pauseIcon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="currentColor" class="hidden"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <span id="currentTimeDisplay" class="text-sm font-mono w-20">00:00.0</span>
+            <input type="range" id="timeSlider" min="0" max="100" value="0" class="w-full">
+            <span id="totalTimeDisplay" class="text-sm font-mono w-20 text-right">00:00.0</span>
+        </div>
+    </footer>
+
+    <script>
+        const canvas = document.getElementById('raceCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI Elements
+        const loadingIndicator = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+        const loadingSpinner = document.getElementById('loadingSpinner');
+        const speedDisplay = document.getElementById('speedDisplay');
+        const fuelBar = document.getElementById('fuelBar');
+        const tireDisplays = {
+            fl: document.getElementById('tireFL'),
+            fr: document.getElementById('tireFR'),
+            rl: document.getElementById('tireRL'),
+            rr: document.getElementById('tireRR'),
+        };
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const playIcon = document.getElementById('playIcon');
+        const pauseIcon = document.getElementById('pauseIcon');
+        const timeSlider = document.getElementById('timeSlider');
+        const currentTimeDisplay = document.getElementById('currentTimeDisplay');
+        const totalTimeDisplay = document.getElementById('totalTimeDisplay');
+
+        // State
+        let trackData = [];
+        let replayData = [];
+        let carImage = new Image();
+        let trackBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 0, height: 0 };
+        let transform = { scale: 1, offsetX: 0, offsetY: 0 };
+        let animationFrameId;
+        let isPlaying = false;
+        let currentTime = 0;
+        let lastTimestamp = 0;
+
+        function showLoadingError(message) {
+            loadingText.innerText = message;
+            loadingSpinner.style.display = 'none';
+            console.error(message);
+        }
+
+        // --- Data Loading ---
+        async function loadData() {
+            try {
+                // Load track file
+                loadingText.innerText = 'Loading track_5762.json...';
+                const trackResponse = await fetch('track_5762.json');
+                if (!trackResponse.ok) {
+                    throw new Error(`HTTP error! Status: ${trackResponse.status} for track_5762.json`);
+                }
+                const rawTrackData = await trackResponse.json();
+                if (!rawTrackData || !rawTrackData.visualization_data) {
+                    throw new Error('Invalid format for track_5762.json: "center_line" property not found.');
+                }
+                trackData = rawTrackData.visualization_data;
+
+                // Load replay file
+                loadingText.innerText = 'Loading f1_replay.json...';
+                const replayResponse = await fetch('f1_replay.json');
+                if (!replayResponse.ok) {
+                    throw new Error(`HTTP error! Status: ${replayResponse.status} for f1_replay.json`);
+                }
+                replayData = await replayResponse.json();
+                if (!Array.isArray(replayData)) {
+                    throw new Error('Invalid format for f1_replay.json: data is not an array.');
+                }
+
+
+                // Flip track and replay data sideways (swap X and Y coordinates)
+                trackData.forEach(p => {
+                    [p.x, p.y] = [p.y, p.x];
+                });
+                replayData.forEach(p => {
+                    [p.position[0], p.position[1]] = [p.position[1], p.position[0]];
+                });
+
+                // Load car image
+                loadingText.innerText = 'Loading car image...';
+                carImage.src = 'car_red.png';
+
+                carImage.onload = () => {
+                    setup();
+                    loadingIndicator.style.display = 'none';
+                };
+                 carImage.onerror = () => {
+                    throw new Error("Could not load car image 'car_red.png'. Make sure it's in the same directory.");
+                };
+            } catch (error) {
+                showLoadingError(`Error: ${error.message}`);
+            }
+        }
+
+        // --- Setup ---
+        function setup() {
+            resizeCanvas();
+            calculateTrackBounds();
+            calculateTransform();
+
+            // Setup time slider
+            if (replayData && replayData.length > 0) {
+                const totalTime = replayData[replayData.length - 1].time;
+                timeSlider.max = totalTime;
+                totalTimeDisplay.textContent = formatTime(totalTime);
+            }
+            currentTimeDisplay.textContent = formatTime(0);
+
+
+            window.addEventListener('resize', handleResize);
+            playPauseBtn.addEventListener('click', togglePlayPause);
+            timeSlider.addEventListener('input', handleSliderChange);
+
+            // Initial draw
+            draw();
+        }
+
+        function handleResize() {
+            resizeCanvas();
+            calculateTransform();
+            if (!isPlaying) {
+                draw();
+            }
+        }
+        
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+        }
+
+
+        function calculateTrackBounds() {
+            if (trackData.length === 0) return;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            trackData.forEach(p => {
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+            });
+            trackBounds = { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
+        }
+
+        function calculateTransform() {
+            const padding = 80; // pixels
+            const canvasWidth = canvas.clientWidth;
+            const canvasHeight = canvas.clientHeight;
+
+            const scaleX = (canvasWidth - padding * 2) / trackBounds.width;
+            const scaleY = (canvasHeight - padding * 2) / trackBounds.height;
+            transform.scale = Math.min(scaleX, scaleY);
+            
+            const trackRenderWidth = trackBounds.width * transform.scale;
+            const trackRenderHeight = trackBounds.height * transform.scale;
+
+            transform.offsetX = (canvasWidth - trackRenderWidth) / 2;
+            transform.offsetY = (canvasHeight - trackRenderHeight) / 2;
+        }
+
+        // --- Animation Loop ---
+        function gameLoop(timestamp) {
+            if (!lastTimestamp) lastTimestamp = timestamp;
+            const deltaTime = (timestamp - lastTimestamp) / 1000; // in seconds
+            lastTimestamp = timestamp;
+
+            if (isPlaying && replayData.length > 0) {
+                currentTime += deltaTime;
+                const totalTime = replayData[replayData.length - 1].time;
+                if (currentTime > totalTime) {
+                    currentTime = totalTime;
+                    togglePlayPause();
+                }
+                timeSlider.value = currentTime;
+            }
+
+            draw();
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+        
+        // --- Drawing ---
+        function draw() {
+            ctx.fillStyle = '#111827';
+            ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+            drawTrack();
+            drawCarPath();
+            const carState = getCarState(currentTime);
+            if(carState) {
+                drawCar(carState);
+                updateUI(carState);
+            }
+        }
+        
+        function transformPoint(x, y) {
+            return {
+                x: (x - trackBounds.minX) * transform.scale + transform.offsetX,
+                y: (y - trackBounds.minY) * transform.scale + transform.offsetY,
+            };
+        }
+
+        function drawTrack() {
+            const trackSegments = [];
+            const pitSegments = [];
+
+            let currentSegment = [];
+            let currentPitSegment = [];
+            let wasPit = trackData.length > 0 ? trackData[0].is_pit_stop : false;
+
+            trackData.forEach(p => {
+                if(p.is_pit_stop !== wasPit) {
+                    if(wasPit) {
+                        pitSegments.push(currentPitSegment);
+                        currentPitSegment = [p];
+                    } else {
+                        trackSegments.push(currentSegment);
+                        currentSegment = [p];
+                    }
+                }
+                if(p.is_pit_stop){
+                     currentPitSegment.push(p);
+                } else {
+                    currentSegment.push(p);
+                }
+                wasPit = p.is_pit_stop;
+            });
+            trackSegments.push(currentSegment);
+            pitSegments.push(currentPitSegment);
+
+            ctx.strokeStyle = '#4B5563';
+            ctx.lineWidth = 12 * transform.scale;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            trackSegments.forEach(segment => {
+                 if (segment.length < 2) return;
+                ctx.beginPath();
+                const startPoint = transformPoint(segment[0].x, segment[0].y);
+                ctx.moveTo(startPoint.x, startPoint.y);
+                for (let i = 1; i < segment.length; i++) {
+                    const p = transformPoint(segment[i].x, segment[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            });
+
+            ctx.strokeStyle = '#6B7280';
+            ctx.lineWidth = 6 * transform.scale;
+            pitSegments.forEach(segment => {
+                 if (segment.length < 2) return;
+                ctx.beginPath();
+                const startPoint = transformPoint(segment[0].x, segment[0].y);
+                ctx.moveTo(startPoint.x, startPoint.y);
+                for (let i = 1; i < segment.length; i++) {
+                    const p = transformPoint(segment[i].x, segment[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            });
+        }
+
+        function drawCarPath() {
+            if (replayData.length < 2 || currentTime <= 0) return;
+
+            let lastIndex = replayData.findIndex(p => p.time >= currentTime);
+            if (lastIndex === -1) {
+                lastIndex = replayData.length;
+            }
+            if (lastIndex === 0) return;
+
+            ctx.beginPath();
+            ctx.strokeStyle = '#f87171';
+            ctx.lineWidth = 5 * transform.scale;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.globalAlpha = 0.8;
+
+            const startPoint = transformPoint(replayData[0].position[0], replayData[0].position[1]);
+            ctx.moveTo(startPoint.x, startPoint.y);
+            
+            for (let i = 1; i < lastIndex; i++) {
+                const point = transformPoint(replayData[i].position[0], replayData[i].position[1]);
+                ctx.lineTo(point.x, point.y);
+            }
+
+            const carState = getCarState(currentTime);
+            if (carState) {
+                const finalPoint = transformPoint(carState.position[0], carState.position[1]);
+                ctx.lineTo(finalPoint.x, finalPoint.y);
+            }
+
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+        }
+        
+        function drawCar(state) {
+            const carScreenPos = transformPoint(state.position[0], state.position[1]);
+            const carWidth = 30;
+            const carHeight = carWidth / 2;
+            
+            ctx.save();
+            ctx.translate(carScreenPos.x, carScreenPos.y);
+            ctx.rotate(state.angle);
+            ctx.drawImage(carImage, -carWidth / 2, -carHeight / 2, carWidth, carHeight);
+            ctx.restore();
+        }
+
+        function getCarState(time) {
+            if (replayData.length < 2) return null;
+            
+            let p1_index = replayData.findIndex(p => p.time >= time);
+            if (p1_index === -1) p1_index = replayData.length - 1;
+            if (p1_index === 0) p1_index = 1;
+            
+            const p1 = replayData[p1_index];
+            const p2 = replayData[p1_index - 1];
+
+            const t = (p1.time - p2.time === 0) ? 1 : (time - p2.time) / (p1.time - p2.time);
+            if(isNaN(t) || !isFinite(t)) return p1;
+            
+            const lerp = (a, b) => a + (b - a) * t;
+            
+            return {
+                time: time,
+                position: [lerp(p2.position[0], p1.position[0]), lerp(p2.position[1], p1.position[1])],
+                speed_kmh: lerp(p2.speed_kmh, p1.speed_kmh),
+                fuel: lerp(p2.fuel, p1.fuel),
+                tires: [lerp(p2.tires[0], p1.tires[0]), lerp(p2.tires[1], p1.tires[1]), lerp(p2.tires[2], p1.tires[2]), lerp(p2.tires[3], p1.tires[3])],
+                angle: Math.atan2(p1.position[1] - p2.position[1], p1.position[0] - p2.position[0])
+            };
+        }
+
+        // --- UI Updates and Controls ---
+        function updateUI(state) {
+            speedDisplay.textContent = `${Math.round(state.speed_kmh)} km/h`;
+            currentTimeDisplay.textContent = formatTime(state.time);
+            fuelBar.style.width = `${state.fuel}%`;
+            
+            const tireColors = (wear) => {
+                if (wear > 70) return 'bg-green-500';
+                if (wear > 40) return 'bg-yellow-500';
+                return 'bg-red-500';
+            };
+
+            tireDisplays.fl.style.width = `${state.tires[0]}%`;
+            tireDisplays.fl.className = `h-2 rounded-full ${tireColors(state.tires[0])}`;
+            tireDisplays.fr.style.width = `${state.tires[1]}%`;
+            tireDisplays.fr.className = `h-2 rounded-full ${tireColors(state.tires[1])}`;
+            tireDisplays.rl.style.width = `${state.tires[2]}%`;
+            tireDisplays.rl.className = `h-2 rounded-full ${tireColors(state.tires[2])}`;
+            tireDisplays.rr.style.width = `${state.tires[3]}%`;
+            tireDisplays.rr.className = `h-2 rounded-full ${tireColors(state.tires[3])}`;
+        }
+        
+        function togglePlayPause() {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                lastTimestamp = performance.now();
+                animationFrameId = requestAnimationFrame(gameLoop);
+                playIcon.classList.add('hidden');
+                pauseIcon.classList.remove('hidden');
+            } else {
+                cancelAnimationFrame(animationFrameId);
+                playIcon.classList.remove('hidden');
+                pauseIcon.classList.add('hidden');
+            }
+        }
+        
+        function handleSliderChange(e) {
+            currentTime = parseFloat(e.target.value);
+            if (!isPlaying) {
+                draw();
+            }
+        }
+
+        function formatTime(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            const ms = Math.round((seconds - Math.floor(seconds)) * 10);
+            return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${ms}`;
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
