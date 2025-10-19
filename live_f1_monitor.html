@@ -42,7 +42,7 @@
             text-align: center;
             font-size: 1.5rem; /* 24px */
             font-weight: 700;
-            color: #ef4444; /* text-red-500 */
+            color: white;
         }
         
         /* Card styles from index.html */
@@ -92,7 +92,7 @@
             padding: 8px 10px;
             border-radius: 8px;
         }
-        .value { font-size: 1.25rem; /* 20px */ font-weight: 600; }
+        .value { font-size: 0.9rem; /* 20px */ font-weight: 600; margin-top: 10px; }
         .muted { color: #9ca3af; /* text-gray-400 */ font-size: 0.75rem; /* 12px */ }
         
         /* Pill styles from index.html */
@@ -103,8 +103,8 @@
             border: 1px solid #ccc;
             text-transform: capitalize;
             font-weight: 600;
-            font-size: 0.875rem;
-            margin-top: 4px;
+            font-size: 0.75rem;
+            margin-top: 8px;
         }
         .pill[data-a="0"] { background:#e6ffed; color: #00611a; border-color: #a3e9b6; } /* Accel (DQN) */
         .pill[data-a="1"] { background:#fff5e6; color: #783a00; border-color: #ffdcb0; } /* Brake (DQN) */
@@ -132,16 +132,16 @@
 <body>
 
     <header>
-        <h1>Live F1 Race Monitor</h1>
+        <h1>Reinforcement Learning For Optimal Race Strategy</h1>
         <div class="cards">
             <div class="card">
                 <h2>
-                    <span>Praneel's DQN</span>
+                    <span style="color: #3b82f6;">DQN Agent</span>
                     <span id="agent1_status" class="status" data-status="connecting">Connecting...</span>
                 </h2>
                 <div class="kpi-grid">
                     <div class="kpi">
-                        <div class="muted">Lap / Progress</div>
+                        <div class="muted">Lap/Progress</div>
                         <div class="value">#<span id="agent1_lap">0</span> (<span id="agent1_progressPct">0</span>%)</div>
                     </div>
                     <div class="kpi">
@@ -169,12 +169,12 @@
 
             <div class="card">
                 <h2>
-                    <span>Inference Backend</span>
+                    <span style="color: #ef4444;">PPO Agent</span>
                     <span id="agent2_status" class="status" data-status="connecting">Connecting...</span>
                 </h2>
                 <div class="kpi-grid">
                     <div class="kpi">
-                        <div class="muted">Lap / Progress</div>
+                        <div class="muted">Lap/Progress</div>
                         <div class="value">#<span id="agent2_lap">0</span> (<span id="agent2_progressPct">0</span>%)</div>
                     </div>
                     <div class="kpi">
@@ -187,7 +187,7 @@
                     </div>
                     <div class="kpi">
                         <div class="muted">Decision</div>
-                        <div id="agent2_decision" class="pill" data-a="maintain">Maintain</div>
+                        <div id="agent2_decision" class="pill" data-a="maintain">Coast</div>
                     </div>
                     <div class="kpi">
                         <div class="muted">Tires (FL/FR)</div>
@@ -236,7 +236,7 @@
             TOTAL_LAPS: 20,
             LAP_DISTANCE_M: 3200.0,             // From index.html
             ACTION_MAP: {                       // From index.html
-              0: { label: 'Accel', key: '0' },
+              0: { label: 'Accelerate', key: '0' },
               1: { label: 'Brake', key: '1' },
               2: { label: 'Coast', key: '2' },
               3: { label: 'Pit Stop', key: '3' },
@@ -250,9 +250,9 @@
             TRACK_LENGTH_M: 3200.0,             // From index2.html
             DEADZONE: 0.3,                      // From index2.html
             ACTION_MAP: {                       // From index2.html
-              'speed_up': 'Speed Up',
-              'slow_down': 'Slow Down',
-              'maintain': 'Maintain Speed'
+              'speed_up': 'Accelerate',
+              'slow_down': 'Brake',
+              'maintain': 'Coast'
             }
           }
         };
@@ -281,7 +281,7 @@
         // Agent 1 (DQN)
         let agent1 = {
           id: 'dqn',
-          name: "Praneel's DQN",
+          name: "DQN",
           color: '#3b82f6', // Blue
           carImage: new Image(),
           ws: null,
@@ -306,7 +306,7 @@
         // Agent 2 (Inference)
         let agent2 = {
           id: 'inference',
-          name: 'Inference',
+          name: 'PPO',
           color: '#ef4444', // Red
           carImage: new Image(),
           ws: null,
