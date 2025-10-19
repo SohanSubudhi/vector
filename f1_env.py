@@ -67,9 +67,11 @@ class F1Car:
         
         return np.array([d_dist_dt, d_speed_dt, d_fuel_dt, *d_tires_dt])
 
-    def _handle_pitting(self, agent_throttle_brake: float, pit_intent: bool) -> float:
-        if self.state.status == CarStatus.RACING and pit_intent and self.track.is_in_pit_entry_zone(self.distance_traveled_m):
+    def _handle_pitting(self, agent_throttle_brake: float) -> float:
+        # MODIFIED: Pitting is now automatic based on position, not agent intent.
+        if self.state.status == CarStatus.RACING and self.track.is_in_pit_entry_zone(self.distance_traveled_m):
             self.state.status = CarStatus.PITTING
+            
         if self.state.status == CarStatus.PITTING:
             if self.track.is_at_pit_box(self.distance_traveled_m):
                 self.state.speed_ms = 0
@@ -86,8 +88,9 @@ class F1Car:
                 self.pit_stop_duration_s = np.random.uniform(3.0, 4.0)
         return agent_throttle_brake
 
-    def step(self, throttle_brake: float, pit_intent: bool):
-        self._throttle_brake_input = self._handle_pitting(throttle_brake, pit_intent)
+    def step(self, throttle_brake: float):
+        # MODIFIED: Removed pit_intent
+        self._throttle_brake_input = self._handle_pitting(throttle_brake)
         if self.state.status == CarStatus.PITTING and self.track.is_at_pit_box(self.distance_traveled_m):
             self.time += self.time_step
             return
@@ -111,8 +114,12 @@ class F1Env(gym.Env):
         super().__init__()
         self.time_step = time_step
         self.lookahead_distances = np.array([0, 20, 50, 100, 150], dtype=np.float32)
-        self.action_space = spaces.Box(low=np.array([-1.0, 0.0]), high=np.array([1.0, 1.0]), shape=(2,), dtype=np.float32)
-        num_base_obs = 7
+        
+        # MODIFIED: Action space is now just throttle/brake
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(1,), dtype=np.float32)
+        
+        # MODIFIED: Observation space is larger to include distance to pit entry
+        num_base_obs = 8 
         num_obs = num_base_obs + len(self.lookahead_distances)
         self.observation_space = spaces.Box(low=-1.0, high=1.0, shape=(num_obs,), dtype=np.float32)
 
@@ -128,9 +135,15 @@ class F1Env(gym.Env):
 
     def _get_obs(self) -> np.ndarray:
         s = self.car.state
-        base_obs = np.concatenate(([s.speed_ms, s.fuel_percent], s.tires_health_percent, [s.completion_percent]))
+        # NEW: Get the distance to the pit entry for the agent
+        dist_to_pit = self.track.get_distance_to_pit_entry(self.car.distance_traveled_m)
+        
+        # MODIFIED: Add dist_to_pit to the base observations
+        base_obs = np.concatenate(([s.speed_ms, s.fuel_percent], s.tires_health_percent, [s.completion_percent, dist_to_pit]))
+        
         lookahead_obs = s.max_safe_speeds_ms
         full_obs = np.concatenate((base_obs, lookahead_obs))
+        # The same normalization now applies to the new distance observation
         norm_obs = (full_obs / 50.0) - 1.0
         return np.clip(norm_obs, -1.0, 1.0).astype(np.float32)
 
@@ -138,8 +151,9 @@ class F1Env(gym.Env):
         prev_distance = self.car.distance_traveled_m
         prev_laps = int(prev_distance / self.track.track_length)
         
-        throttle_brake, pit_intent = action[0], action[1] > 0.5
-        self.car.step(throttle_brake, pit_intent)
+        # MODIFIED: Action is now a single value for throttle/brake
+        throttle_brake = action[0]
+        self.car.step(throttle_brake)
         
         self._update_lookaheads()
         
@@ -155,28 +169,21 @@ class F1Env(gym.Env):
             reward_penalty = -100.0
 
         # --- REVISED REWARD SHAPING ---
-        
-        # 1. Primary Reward: Progress along the track. Greatly amplified to be the main goal.
         distance_gain = self.car.distance_traveled_m - prev_distance
         progress_reward = 10.0 * distance_gain
 
-        # 2. Speed Reward: A small, direct reward for moving fast. This punishes standing still.
         speed_aggressiveness = 0.1
         speed_error = (max_safe_speed_current - current_speed) / max_safe_speed_current
-
-        # Only apply this reward if the agent is not over-speeding
         if current_speed < max_safe_speed_current * 1.05:
             speed_reward = math.exp(-speed_aggressiveness * (speed_error**2)) * 0.1
         else:
             speed_reward = 0
         
-        # 3. Aggressive Braking Reward: Kept the logic to teach hard braking, but scaled it down.
         braking_reward = 0
         is_braking_zone = max_safe_speed_50m_ahead < max_safe_speed_current * 0.9 and current_speed > max_safe_speed_50m_ahead
         if is_braking_zone and throttle_brake < -0.75:
             braking_reward = 0.05 * abs(throttle_brake)
 
-        # 4. Penalty for low resources (unchanged)
         resource_penalty = 0
         min_tire_health = np.min(self.car.state.tires_health_percent)
         if min_tire_health < 20.0:
@@ -184,12 +191,13 @@ class F1Env(gym.Env):
         if self.car.state.fuel_percent < 20.0:
             resource_penalty -= (20.0 - self.car.state.fuel_percent) * 0.02
 
-        control_jerk = abs(throttle_brake - self.last_action[0])
+        # MODIFIED: last_action is now a float
+        control_jerk = abs(throttle_brake - self.last_action)
         smoothness_penalty = -0.01 * control_jerk
-        self.last_action = action
-        # Combine all reward components
+        self.last_action = throttle_brake
+
         reward = (progress_reward + speed_reward + braking_reward + 
-          resource_penalty + reward_penalty + smoothness_penalty)
+                  resource_penalty + reward_penalty + smoothness_penalty)
         
         current_laps = int(self.car.distance_traveled_m / self.track.track_length)
         if current_laps > prev_laps:
@@ -220,7 +228,8 @@ class F1Env(gym.Env):
         track_seed = self.np_random.integers(100000)
         self.track = Track.generate(n_points=300, seed=track_seed)
         self.car = F1Car(self.track, self.time_step)
-        self.last_action = np.zeros(2, dtype=np.float32)
+        # MODIFIED: last_action is now a float
+        self.last_action = 0.0
         self._update_lookaheads()
         return self._get_obs(), self._get_info()
 

@@ -53,6 +53,26 @@ def _count_self_intersections(xy: np.ndarray) -> int:
                 count += 1
     return count
 
+# Add this method to your Track class in track.py
+def get_distance_to_pit_entry(self, current_distance: float) -> float:
+    """Calculates the forward distance along the track to the pit entry zone."""
+    if self.pit_box_index == -1:  # No pit lane on the track
+        return self.track_length * 2 # Return a large, constant distance
+
+    pit_indices = np.where(self.pit_mask)[0]
+    pit_entry_start_idx = (pit_indices[0] - 10 + self.n_points) % self.n_points
+
+    # Convert the index of the start of the pit entry zone to a distance
+    pit_entry_start_distance = pit_entry_start_idx * self.dist_per_segment
+    current_distance_mod = current_distance % self.track_length
+
+    if current_distance_mod <= pit_entry_start_distance:
+        # Pit entry is ahead on the current lap
+        return pit_entry_start_distance - current_distance_mod
+    else:
+        # Pit entry is on the next lap
+        return (self.track_length - current_distance_mod) + pit_entry_start_distance
+
 def _generate_perlin_base(N: int, seed: Optional[int]) -> np.ndarray:
     """Generates a non-intersecting closed loop using Perlin noise for a more natural shape."""
     rng = np.random.default_rng(seed)
