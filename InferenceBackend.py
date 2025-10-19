@@ -58,7 +58,7 @@ TOTAL_LAPS = 10 # Define total laps for the race
 
 # --- Model Path Config ---
 # Your train.py saves a .zip file, not .pth
-MODEL_PATH = os.getenv("MODEL_PATH", "ppo_f1_driver_lookahead.zip") # Path to your .zip file
+MODEL_PATH = "ppo_f1_driver_lookahead.zip" # Path to your .zip file
 
 
 # =========================
