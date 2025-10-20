@@ -8,7 +8,7 @@ import json
 import matplotlib.pyplot as plt
 import torch
 from typing import Callable
-from f1_env import F1Env
+from ppo.f1_env import F1Env
 from track import Track
 import os
 import torch as th

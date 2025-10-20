@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 # --- Imports for F1 Simulation ---
 try:
-    from f1_env import F1Env, CarStatus, Track
+    from ppo.f1_env import F1Env, CarStatus, Track
 except ImportError:
     print("Error: Could not import from f1_env.py.")
     print("Please ensure f1_env.py, track.py, solver.py, and track_5762.json are in the same directory.")
