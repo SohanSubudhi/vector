@@ -32,7 +32,7 @@ PPO
 1.  Install dependencies:
     `pip install -r requirements.txt`
 
-2.  Define API keys:
+2.  Define Gemini and ElevenLabs API keys in lines 918/919 of comparison.html
     
 ### How to Train
 
