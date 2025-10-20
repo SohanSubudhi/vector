@@ -5,9 +5,9 @@ from collections import deque
 import matplotlib.pyplot as plt
 
 # Make sure mph_to_mps is available for the logger
-from environment import RaceCarEnvironment, mps_to_mph # Import mps_to_mph
-from agent import DQNAgent
-import config
+from dqn.environment import RaceCarEnvironment, mps_to_mph # Import mps_to_mph
+from dqn.agent import DQNAgent
+import dqn.config as config
 
 def train():
     env = RaceCarEnvironment()

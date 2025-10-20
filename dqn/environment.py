@@ -1,7 +1,7 @@
 # environment.py
 import numpy as np
 import json
-import config
+import dqn.config as config
 import math # <-- Add math import
 
 # Helper to convert MPH to M/S and vice-versa

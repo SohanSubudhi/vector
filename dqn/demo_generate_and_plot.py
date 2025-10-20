@@ -2,7 +2,7 @@
 # Simple demo: generate, validate, visualize a track.
 import argparse
 import json
-from track_gen import generate_track, validate_track, visualize_track, track_to_xy
+from dqn.track_gen import generate_track, validate_track, visualize_track, track_to_xy
 
 def main():
     parser = argparse.ArgumentParser()

@@ -227,7 +227,7 @@ let trackBounds = null;
 // Load track data once at startup
 async function loadTrackData() {
   try {
-    const res = await fetch('track_5762.json');
+    const res = await fetch('../track_5762.json');
     const data = await res.json();
     track_data = data.visualization_data; 
     

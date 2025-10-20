@@ -33,9 +33,9 @@ from pydantic import BaseModel
 try:
     import torch
     # These files MUST be in the same directory
-    from environment import RaceCarEnvironment
-    from agent import DQNAgent 
-    import config
+    from dqn.environment import RaceCarEnvironment
+    from dqn.agent import DQNAgent 
+    import dqn.config as config
 except ImportError:
     print("Error: Could not import from environment.py, agent.py, or config.py.")
     print("Please ensure all three files are in the same directory as PraneelBackend.py.")

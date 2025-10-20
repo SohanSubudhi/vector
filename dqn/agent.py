@@ -6,7 +6,7 @@ import torch.nn.functional as F
 import numpy as np
 import random
 from collections import namedtuple, deque
-import config
+import dqn.config as config
 
 # Use GPU if available
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
