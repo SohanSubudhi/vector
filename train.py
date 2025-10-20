@@ -73,7 +73,6 @@ class VisualizationCallback(BaseCallback):
             track_points = track.spline.evaluate(np.linspace(0, track.n_points, 2000))
             ax.plot(track_points[:, 0], track_points[:, 1], 'k--', alpha=0.4, label="Track Centerline")
             
-            # ++ NEW: Draw the pittable section of the track ++
             pit_indices = np.where(track.pit_mask)[0]
             if len(pit_indices) > 0:
                 pit_start_t = pit_indices.min()
@@ -88,11 +87,10 @@ class VisualizationCallback(BaseCallback):
             x_min, x_max = track_points[:, 0].min(), track_points[:, 0].max()
             y_min, y_max = track_points[:, 1].min(), track_points[:, 1].max()
             ax.set_xlim(x_min - 50, x_max + 50); ax.set_ylim(y_min - 50, y_max + 50)
-            ax.set_aspect('equal'); ax.legend(loc='lower right') # Make sure legend is drawn
+            ax.set_aspect('equal'); ax.legend(loc='lower right')
             plt.title(f"Live F1 Agent Evaluation (Training Step: {self.num_timesteps})")
             plt.grid(True, linestyle='--', alpha=0.3)
 
-            # ... (the rest of the visualization while loop is unchanged) ...
             terminated, truncated, total_reward, step_counter = False, False, 0.0, 0
             while not (terminated or truncated):
                 action, _ = self.model.predict(obs, deterministic=True)
@@ -106,7 +104,6 @@ class VisualizationCallback(BaseCallback):
                     car = self.eval_env.unwrapped.car # Get the car object
                     speed_kmh = car_state.speed_ms * 3.6
 
-                    # -- MODIFIED: Update the car's color and status text when sliding --
                     if car.is_sliding:
                         car_dot.set_color('magenta') # Change color to indicate sliding
                         status_str = f"{info.get('status', 'UNKNOWN')} (SLIDING)"
@@ -114,7 +111,6 @@ class VisualizationCallback(BaseCallback):
                         car_dot.set_color('red') # Normal color
                         status_str = info.get('status', 'UNKNOWN')
                     
-                    # ... (action formatting is unchanged) ...
                     action_str, pit_action_str = "Coasting", f"NO PIT ({action[1]:.2f})"
                     if action[0] > 0.05: action_str = f"Throttle: {action[0]*100:3.0f}%"
                     elif action[0] < -0.05: action_str = f"Brake:    {-action[0]*100:3.0f}%"
@@ -148,7 +144,6 @@ class VisualizationCallback(BaseCallback):
 
         return True
 
-# ==============================================================================
 
 def linear_schedule(initial_value: float) -> Callable[[float], float]:
     def func(progress_remaining: float) -> float:
@@ -193,7 +188,6 @@ def cosine_restarts_schedule(initial_value: float, n_restarts: int) -> Callable[
     return func
 
 def main():
-    # Set run_live_visualization to False to avoid running it *after* training
     CONTINUE_TRAINING = True 
     MODEL_TO_LOAD = "ppo_f1_driver_final_test_six.zip" 
     run_live_visualization_after_training = True
@@ -231,7 +225,6 @@ def main():
 
     if CONTINUE_TRAINING:
         print(f"\n🔄 Continuing training from model: {MODEL_TO_LOAD}")
-        # We need to tell SB3 how to load our custom learning rate functions
         custom_objects = {
             "learning_rate": cosine_restarts_schedule(3e-4, n_restarts=4),
             "clip_range": linear_schedule(0.2),

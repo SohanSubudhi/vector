@@ -9,10 +9,6 @@ from scipy.integrate import quad
 import matplotlib.pyplot as plt
 from perlin_noise import PerlinNoise
 
-# ====================================================================================
-# §1. TRACK GENERATION LOGIC (Unchanged)
-# ====================================================================================
-
 def _resample_closed_polyline(xy: np.ndarray, N: int) -> np.ndarray:
     """Resamples a closed polyline to have N evenly spaced points."""
     P = np.vstack([xy, xy[0]])
@@ -164,9 +160,6 @@ def _create_chicane(xy: np.ndarray, rng: np.random.Generator) -> np.ndarray:
         xy[idx] += normal * push_scale * blend * wave
     return _apply_local_smoothing(xy, indices, passes=4)
 
-# ====================================================================================
-# §2. TRACK CLASS
-# ====================================================================================
 
 class Track:
     def __init__(self, control_points: np.ndarray, pit_mask: np.ndarray):
@@ -213,7 +206,7 @@ class Track:
         control_xy = np.vstack([final_xy, final_xy[0]])
         pit_len = max(1, int(round(0.05 * n_points)))
         pit_mask = np.zeros(n_points, dtype=bool)
-        pit_start_index = rng.integers(0, n_points - pit_len)
+        pit_start_index = n_points - pit_len
         pit_mask[np.arange(start=pit_start_index, stop=n_points)] = True
         control_points = np.hstack([control_xy, np.zeros((control_xy.shape[0], 1))])
         return cls(control_points, pit_mask)
@@ -243,7 +236,6 @@ class Track:
         np.savez(file_path, control_points=self.control_points, pit_mask=self.pit_mask)
         print(f"Track object saved to '{file_path}'")
 
-    # -- MODIFIED: export_to_json now saves data needed for reconstruction --
     def export_to_json(self, file_path: str, num_samples: int = 1000):
         """Exports both visualization and reconstruction data to a JSON file."""
         distances = np.linspace(0, self.track_length, num_samples, endpoint=False)
@@ -256,7 +248,6 @@ class Track:
             vis_data.append({'x': coords[0], 'y': coords[1], 'is_pit_stop': bool(self.is_pit_stoppable(d)),
                                'turn_radius': None if is_straight else radius})
         
-        # Bundle everything into a single dictionary
         full_data = {
             "reconstruction_data": {
                 "control_points": self.control_points.tolist(),
@@ -290,25 +281,18 @@ class Track:
         Calculates the forward distance to the next pit entry zone.
         Returns 0.0 if the car is currently within any part of the pit entry zone.
         """
-        # -- NEW: Check if the car is already in the pit entry zone --
         if self.is_in_pit_entry_zone(current_distance):
             return 0.0
-
-        # If not in the zone, calculate the distance to the start of the next one.
         if self.pit_box_index == -1:
-            return self.track_length * 2 # Effectively infinite
-
-        # Find the starting index of the pit entry zone
+            return self.track_length * 2
+        
         pit_indices = np.where(self.pit_mask)[0]
         pit_entry_start_idx = (pit_indices[0] - 10 + self.n_points) % self.n_points
         
-        # Convert the index to a distance along the track
         pit_entry_start_distance = pit_entry_start_idx * self.dist_per_segment
         
-        # Get the car's position within a single lap
         current_distance_mod = current_distance % self.track_length
 
-        # Calculate the forward distance, wrapping around to the next lap if needed
         distance = pit_entry_start_distance - current_distance_mod
         if distance < 0:
             distance += self.track_length
@@ -368,28 +352,20 @@ class Track:
 if __name__ == '__main__':
     print("--- 🏎️  Final F1 Track Generation Demo ---")
     
-    # -- MODIFIED: Correctly demonstrate the generate -> save -> load workflow --
-    seed = np.random.randint(0, 10000)
-    # seed = 10
-    json_filepath = f"track_{seed}.json"
-    
-    try:
-        # 1. Generate a new track
-        print(f"\nGenerating a new track with seed {seed}...")
-        # original_track = Track.generate(seed=seed)
+    for _ in range(10):
+        seed = np.random.randint(0, 10000)
+        json_filepath = f"track_{seed}.json"
         
-        # # 2. Save it to a JSON file
-        # original_track.export_to_json(json_filepath)
+        try:
+            print(f"\nGenerating a new track with seed {seed}...")
+            original_track = Track.generate(seed=seed)
+            original_track.export_to_json(json_filepath)
+            print(f"\nLoading track from '{json_filepath}'...")
+            loaded_track = Track.load_from_json(json_filepath)
+            print("\nVisualizing the loaded track...")
+            loaded_track.visualize(f"loaded_track_{seed}.png")
+
+            print("\n✅ Demo complete. Check for the generated track files.")
         
-        # 3. Load it back from the JSON file
-        print(f"\nLoading track from '{json_filepath}'...")
-        loaded_track = Track.load_from_json('track_5762.json')
-        
-        # 4. Visualize the loaded track to confirm it's identical
-        print("\nVisualizing the loaded track...")
-        loaded_track.visualize(f"loaded_track_5672.png")
-        
-        print("\n✅ Demo complete. Check for the generated track files.")
-        
-    except (RuntimeError, ValueError, FileNotFoundError) as e:
-        print(f"\n❌ Error during track demo: {e}")
+        except (RuntimeError, ValueError, FileNotFoundError) as e:
+            print(f"\n❌ Error during track demo: {e}")

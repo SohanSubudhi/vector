@@ -1,23 +1,3 @@
-"""
-HackTX Race Backend (FastAPI, continuous controls)
-Streams frames over WebSocket at ~10 Hz.
-
-Decision now uses two floats:
-  - accel   in [-1, 1]  (positive -> speed up, negative -> slow down)
-  - pit_prob in [0, 1]  (probability of pitting)
-
-Endpoints:
-  WS  /ws            -> live frames
-  GET /snapshot      -> latest frame
-  GET /history?seconds=30  -> recent frames
-
-Run:
-  pip install fastapi uvicorn pydantic numpy gymnasium stable-baselines3[torch] torch
-  export MODEL_PATH="path/to/your/f1_model.pth"
-  # This command assumes your file is named InferenceBackend.py
-  uvicorn InferenceBackend:app --reload --port 8000 
-"""
-
 from __future__ import annotations
 
 import asyncio
@@ -25,7 +5,7 @@ import os
 import time
 from collections import deque
 from typing import Optional, Dict
-
+import zipfile
 import numpy as np
 from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
@@ -59,7 +39,7 @@ TOTAL_LAPS = 10 # Define total laps for the race
 # --- Model Path Config ---
 # Your train.py saves a .zip file, not .pth
 # MODEL_PATH = "ppo_f1_driver_final.zip" # Path to your .zip file
-MODEL_PATH = "ppo_f1_driver_final_test_three.zip" # Path to your .zip file
+MODEL_PATH = "ppo_f1_driver_final_test_four.zip" # Path to your .zip file
 
 
 # =========================
@@ -197,6 +177,7 @@ def model_infer(obs_api: Obs, obs_gym: np.ndarray) -> Decision:
         # The model was trained on the gym observation, so we pass obs_gym.
         action, _states = model.predict(obs_gym, deterministic=True)
         accel = float(action[0])
+        pit_prob = float(action[1])
     else:
         # Fallback to stub logic if model failed to load
         print("WARN: No model loaded. Falling back to rule-based stub for accel.")
@@ -210,33 +191,33 @@ def model_infer(obs_api: Obs, obs_gym: np.ndarray) -> Decision:
     # --- 2. Pitting Logic (Rule-based) ---
     # This logic is still required as the model only predicts accel.
     # We use the API-friendly `obs_api` object for these rules.
-    pit_prob = 0.0
+    # pit_prob = 0.0
     
-    # Check fuel
-    if obs_api.current_fuel < 10.0: # If fuel is below 10%
-        pit_prob = 0.9
+    # # Check fuel
+    # if obs_api.current_fuel < 10.0: # If fuel is below 10%
+    #     pit_prob = 0.9
     
-    # Check tires: wear is 0.0 (new) to 1.0 (worn)
-    max_wear = max(obs_api.tire_wear.fl, obs_api.tire_wear.fr, obs_api.tire_wear.rl, obs_api.tire_wear.rr)
-    if max_wear > 0.85: # If any tire has > 85% wear
-        pit_prob = 0.9
+    # # Check tires: wear is 0.0 (new) to 1.0 (worn)
+    # max_wear = max(obs_api.tire_wear.fl, obs_api.tire_wear.fr, obs_api.tire_wear.rl, obs_api.tire_wear.rr)
+    # if max_wear > 0.85: # If any tire has > 85% wear
+    #     pit_prob = 0.9
         
-    # If we decided to pit, commit and override accel if needed
-    if pit_prob > 0.5:
-        pit_prob = 1.0
-        # If we are close to the pit, slow down!
-        if obs_api.distance_to_pit < 100.0:
-            pit_lane_speed_ms = 22.2 # from f1_env.py
-            if obs_api.current_speed > pit_lane_speed_ms + 2.0:
-                accel = -0.8 # Override model's accel to brake
-            elif obs_api.current_speed < pit_lane_speed_ms - 2.0:
-                accel = 0.3
-            else:
-                accel = 0.1
+    # # If we decided to pit, commit and override accel if needed
+    # if pit_prob > 0.5:
+    #     pit_prob = 1.0
+    #     # If we are close to the pit, slow down!
+    #     if obs_api.distance_to_pit < 100.0:
+    #         pit_lane_speed_ms = 22.2 # from f1_env.py
+    #         if obs_api.current_speed > pit_lane_speed_ms + 2.0:
+    #             accel = -0.8 # Override model's accel to brake
+    #         elif obs_api.current_speed < pit_lane_speed_ms - 2.0:
+    #             accel = 0.3
+    #         else:
+    #             accel = 0.1
                 
-    # If we just pitted (full fuel, new tires), don't pit again
-    elif obs_api.current_fuel > 98.0 and max_wear < 0.05:
-        pit_prob = 0.0
+    # # If we just pitted (full fuel, new tires), don't pit again
+    # elif obs_api.current_fuel > 98.0 and max_wear < 0.05:
+    #     pit_prob = 0.0
             
     return Decision(accel=np.clip(accel, -1.0, 1.0), pit_prob=pit_prob)
 
@@ -312,7 +293,7 @@ async def startup() -> None:
                     
                     # 2. This is the line that might fail
                     # app.state.model = PPO.load(MODEL_PATH, device="mps") 
-                    app.state.model = PPO.load(MODEL_PATH, device="mps") 
+                    app.state.model = PPO.load(MODEL_PATH, device="cpu") 
                     
                     print("✅ RL model loaded successfully (on mps device).")
             

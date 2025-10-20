@@ -264,8 +264,7 @@ class F1Env(gym.Env):
             fuel_needed = max(0.0, 100.0 - prev_fuel)
             tires_needed = np.mean(np.maximum(0.0, 100.0 - prev_tires))
             pit_value = (fuel_needed + tires_needed) / 2.0
-            # smaller positive reward for entering when it's actually useful
-            strategic_pitting_reward = pit_value * 10 + 40.0
+            strategic_pitting_reward = pit_value * 10
 
         # 5. Resource Depletion Penalty
         resource_penalty = 0.0
@@ -285,7 +284,7 @@ class F1Env(gym.Env):
         if current_laps > prev_laps:
             lap_bonus = 200.0
 
-        # 8.
+        # 8. Stopped Penalty
         stopped_penalty = 0.0
         is_stopped = self.car.state.speed_ms < 0.1
         is_in_pit_box = self.track.is_at_pit_box(self.car.distance_traveled_m)
