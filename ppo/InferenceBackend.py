@@ -13,15 +13,13 @@ from pydantic import BaseModel, Field
 
 # --- Imports for F1 Simulation ---
 try:
-    from f1_env import F1Env, CarStatus, Track
-except ImportError:
-    print("Error: Could not import from f1_env.py.")
-    print("Please ensure f1_env.py, track.py, solver.py, and track_5762.json are in the same directory.")
+    from f1_env import F1Env
+except ImportError as e:
+    print(e)
     exit(1)
 
 # --- Imports for RL Model ---
 try:
-    import torch
     from stable_baselines3 import PPO 
 except ImportError:
     print("Error: Could not import stable-baselines3 or torch.")
@@ -39,7 +37,7 @@ TOTAL_LAPS = 10 # Define total laps for the race
 # --- Model Path Config ---
 # Your train.py saves a .zip file, not .pth
 # MODEL_PATH = "ppo_f1_driver_final.zip" # Path to your .zip file
-MODEL_PATH = "models/ppo_f1_driver_final_test_four.zip" # Path to your .zip file
+MODEL_PATH = "models/ppo_f1_driver_final_test_three.zip" # Path to your .zip file
 
 
 # =========================
@@ -166,8 +164,7 @@ def get_initial_state() -> Obs:
 def model_infer(obs_api: Obs, obs_gym: np.ndarray) -> Decision:
     """
     Return continuous controls.
-    - Accel is from the loaded RL model (using obs_gym).
-    - Pit_prob is from rule-based logic (using obs_api).
+    - Accel  and pit_prob is from the loaded RL model (using obs_gym).
     """
     model = app.state.model
     
@@ -187,38 +184,8 @@ def model_infer(obs_api: Obs, obs_gym: np.ndarray) -> Decision:
         elif speed_diff < -3.0: accel = -1.0
         elif speed_diff < -0.5: accel = -0.5
         else: accel = 0.2
-        
-    # --- 2. Pitting Logic (Rule-based) ---
-    # This logic is still required as the model only predicts accel.
-    # We use the API-friendly `obs_api` object for these rules.
-    # pit_prob = 0.0
-    
-    # # Check fuel
-    # if obs_api.current_fuel < 10.0: # If fuel is below 10%
-    #     pit_prob = 0.9
-    
-    # # Check tires: wear is 0.0 (new) to 1.0 (worn)
-    # max_wear = max(obs_api.tire_wear.fl, obs_api.tire_wear.fr, obs_api.tire_wear.rl, obs_api.tire_wear.rr)
-    # if max_wear > 0.85: # If any tire has > 85% wear
-    #     pit_prob = 0.9
-        
-    # # If we decided to pit, commit and override accel if needed
-    # if pit_prob > 0.5:
-    #     pit_prob = 1.0
-    #     # If we are close to the pit, slow down!
-    #     if obs_api.distance_to_pit < 100.0:
-    #         pit_lane_speed_ms = 22.2 # from f1_env.py
-    #         if obs_api.current_speed > pit_lane_speed_ms + 2.0:
-    #             accel = -0.8 # Override model's accel to brake
-    #         elif obs_api.current_speed < pit_lane_speed_ms - 2.0:
-    #             accel = 0.3
-    #         else:
-    #             accel = 0.1
-                
-    # # If we just pitted (full fuel, new tires), don't pit again
-    # elif obs_api.current_fuel > 98.0 and max_wear < 0.05:
-    #     pit_prob = 0.0
-            
+        pit_prob = 0.0
+
     return Decision(accel=np.clip(accel, -1.0, 1.0), pit_prob=pit_prob)
 
 def env_step(obs: Obs, decision: Decision) -> Obs:

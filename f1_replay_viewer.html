@@ -191,7 +191,7 @@
             try {
                 // Load track file
                 loadingText.innerText = 'Loading track_5762.json...';
-                const trackResponse = await fetch('track_5762.json');
+                const trackResponse = await fetch('tracks/track_5762.json');
                 if (!trackResponse.ok) {
                     throw new Error(`HTTP error! Status: ${trackResponse.status} for track_5762.json`);
                 }

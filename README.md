@@ -43,11 +43,11 @@ PPO
 
 ### How to Run
 
-1.  Setup backend: Run `ppo/InferenceBackend.py` for PPO and `dqn/DQNBackend.py` for DQN
-2.  Run `python -m http.server 5500`
+1.  Setup backend: cd into `ppo/` and then run `python InferenceBackend.py` for PPO. Similarly, for DQN, cd into `dqn/` and run `python DQNBackend.py`
+2.  Frontend: Run `python -m http.server 5500` 
 
 #### Dashboards: 
-Go to  [`localhost:5500`](http://localhost:5500/) on your web browser
+Go to  [`localhost:5500/ppo`](http://localhost:5500/ppo) for PPO and [`localhost:5500/dqn`](http://localhost:5500/dqn) for DQN on your web browser
 
 #### Track Racing Comparison (Run RL agents against each other and obtain high level insights):
 Go to [`localhost:5500/comparison.html`](http://localhost:5500/comparison.html) on your web browser

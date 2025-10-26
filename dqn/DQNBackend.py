@@ -32,13 +32,13 @@ from pydantic import BaseModel
 # --- Imports for DQN Model & Environment ---
 try:
     import torch
-    # These files MUST be in the same directory
-    from dqn.environment import RaceCarEnvironment
-    from dqn.agent import DQNAgent 
-    import dqn.config as config
-except ImportError:
+    from environment import RaceCarEnvironment
+    from agent import DQNAgent 
+    import config as config
+except ImportError as e:
+    print(e)
     print("Error: Could not import from environment.py, agent.py, or config.py.")
-    print("Please ensure all three files are in the same directory as PraneelBackend.py.")
+    print("Please ensure all three files are in the same directory as DQNBackend.py.")
     print("You may also need to run: pip install torch")
     exit(1)
 # ==================================

@@ -255,7 +255,7 @@ function pushActionTick(action){
   const dot = document.createElement('span');
   dot.className = 'pill';
   dot.dataset.a = action;
-  const badgeMap = { speed_up: '↑', slow_down: '↓', maintain: '→' };
+  const badgeMap = { speed_up: 'A', slow_down: 'B', maintain: '-' };
   dot.textContent = badgeMap[action] || action;
   dot.title = labelFromAction(action);
   el.ticker.appendChild(dot);

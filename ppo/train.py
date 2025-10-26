@@ -191,7 +191,7 @@ def main():
     CONTINUE_TRAINING = True 
     MODEL_TO_LOAD = "ppo_f1_driver_final_test_six.zip" 
     run_live_visualization_after_training = True
-    eval_track_path = 'track_5762.json' 
+    eval_track_path = '../tracks/track_5762.json' 
     log_dir = "f1_training_logs/"
     os.makedirs(log_dir, exist_ok=True)
 
@@ -273,7 +273,7 @@ def main():
     vis_env.close() 
 
 
-    eval_track_path = 'track_5762.json'
+    eval_track_path = '../tracks/track_5762.json'
     print(f"\n Evaluating trained agent on specific track: {eval_track_path}...")
     model = PPO.load(MODEL_TO_LOAD)
     eval_env = gym.make('F1Env-v0', track_filepath=eval_track_path)

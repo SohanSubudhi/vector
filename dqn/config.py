@@ -17,8 +17,7 @@ PIT_ENTRY_RANGE_METERS = 150.0  # Last 150m of track (User Request)
 MAX_PIT_ENTRY_SPEED_MPH = 40.0   
 
 # --- Track Data ---
-TRACK_FILE = '../track_5762.json' # Path to your track file
-# TRACK_FILE = 'track_data.json' # Path to your track file
+TRACK_FILE = '../tracks/track_5762.json' # Path to your track file
 TRACK_POINT_SPACING = 3.2      # Distance between points in meters
 STRAIGHT_RADIUS_THRESHOLD = 10000.0 # Radii larger than this are treated as straights
 
