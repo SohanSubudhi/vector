@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 # --- Imports for F1 Simulation ---
 try:
-    from ppo.f1_env import F1Env, CarStatus, Track
+    from f1_env import F1Env, CarStatus, Track
 except ImportError:
     print("Error: Could not import from f1_env.py.")
     print("Please ensure f1_env.py, track.py, solver.py, and track_5762.json are in the same directory.")
@@ -39,7 +39,7 @@ TOTAL_LAPS = 10 # Define total laps for the race
 # --- Model Path Config ---
 # Your train.py saves a .zip file, not .pth
 # MODEL_PATH = "ppo_f1_driver_final.zip" # Path to your .zip file
-MODEL_PATH = "ppo_f1_driver_final_test_four.zip" # Path to your .zip file
+MODEL_PATH = "models/ppo_f1_driver_final_test_four.zip" # Path to your .zip file
 
 
 # =========================

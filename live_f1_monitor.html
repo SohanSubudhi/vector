@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live F1 Race Monitor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Base styles from f1_replay_viewer.html */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+            color: #e5e7eb; /* text-gray-200 */
+            overflow-y: auto;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        main {
+            flex-grow: 1;
+            position: relative;
+        }
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        header {
+            padding: 12px;
+            background-color: rgba(17, 24, 39, 0.8); /* bg-gray-900 with opacity */
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid #374151; /* border-gray-700 */
+            z-index: 10;
+        }
+        h1 {
+            margin: 0 0 12px;
+            text-align: center;
+            font-size: 1.5rem; /* 24px */
+            font-weight: 700;
+            color: #ef4444; /* text-red-500 */
+        }
+        
+        /* Card styles from index.html */
+        :root { --gap: 12px; }
+        .cards {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Two columns for two agents */
+            gap: var(--gap);
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        .card {
+            border: 1px solid #374151; /* bg-gray-700 */
+            border-radius: 12px;
+            padding: 12px 14px;
+            background-color: rgba(31, 41, 55, 0.8); /* bg-gray-800 with opacity */
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        .card h2 {
+            margin: 0 0 10px;
+            font-size: 1.125rem; /* 18px */
+            font-weight: 600;
+            border-bottom: 1px solid #4b5563; /* border-gray-600 */
+            padding-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status {
+            font-size: 0.75rem; /* 12px */
+            font-weight: 500;
+            padding: 2px 8px;
+            border-radius: 999px;
+            text-transform: uppercase;
+        }
+        .status[data-status="ok"] { background-color: #10B981; color: #064E3B; } /* Green */
+        .status[data-status="connecting"] { background-color: #F59E0B; color: #78350F; } /* Amber */
+        .status[data-status="error"] { background-color: #EF4444; color: #7F1D1D; } /* Red */
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+        }
+        .kpi {
+            background: rgba(17, 24, 39, 0.5);
+            padding: 8px 10px;
+            border-radius: 8px;
+        }
+        .value { font-size: 1.25rem; /* 20px */ font-weight: 600; }
+        .muted { color: #9ca3af; /* text-gray-400 */ font-size: 0.75rem; /* 12px */ }
+        
+        /* Pill styles from index.html */
+        .pill {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid #ccc;
+            text-transform: capitalize;
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-top: 4px;
+        }
+        .pill[data-a="0"] { background:#e6ffed; color: #00611a; border-color: #a3e9b6; } /* Accel (DQN) */
+        .pill[data-a="1"] { background:#fff5e6; color: #783a00; border-color: #ffdcb0; } /* Brake (DQN) */
+        .pill[data-a="2"] { background:#eef2ff; color: #3730a3; border-color: #c1c7f7; } /* Coast (DQN) */
+        .pill[data-a="3"] { background:#fef2f2; color: #9a2c2c; border-color: #f7c1c1; } /* Pit (DQN) */
+        /* Pill styles from index2.html */
+        .pill[data-a="speed_up"] { background:#e6ffed; color: #00611a; border-color: #a3e9b6; }
+        .pill[data-a="slow_down"] { background:#fff5e6; color: #783a00; border-color: #ffdcb0; }
+        .pill[data-a="maintain"] { background:#eef2ff; color: #3730a3; border-color: #c1c7f7; }
+
+        /* Loading overlay from f1_replay_viewer.html */
+        #loading {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(17, 24, 39, 0.9); /* bg-gray-900/90 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+        }
+        #loadingSpinner { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Live F1 Race Monitor</h1>
+        <div class="cards">
+            <div class="card">
+                <h2>
+                    <span>Praneel's DQN</span>
+                    <span id="agent1_status" class="status" data-status="connecting">Connecting...</span>
+                </h2>
+                <div class="kpi-grid">
+                    <div class="kpi">
+                        <div class="muted">Lap / Progress</div>
+                        <div class="value">#<span id="agent1_lap">0</span> (<span id="agent1_progressPct">0</span>%)</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Speed (km/h)</div>
+                        <div class="value"><span id="agent1_speed">0.0</span></div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Fuel</div>
+                        <div class="value"><span id="agent1_fuelPct">0</span>%</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Decision</div>
+                        <div id="agent1_decision" class="pill" data-a="2">Coast</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Tires (FL/FR)</div>
+                        <div class="value"><span id="agent1_tireFL">0</span>% / <span id="agent1_tireFR">0</span>%</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Tires (RL/RR)</div>
+                        <div class="value"><span id="agent1_tireRL">0</span>% / <span id="agent1_tireRR">0</span>%</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>
+                    <span>Inference Backend</span>
+                    <span id="agent2_status" class="status" data-status="connecting">Connecting...</span>
+                </h2>
+                <div class="kpi-grid">
+                    <div class="kpi">
+                        <div class="muted">Lap / Progress</div>
+                        <div class="value">#<span id="agent2_lap">0</span> (<span id="agent2_progressPct">0</span>%)</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Speed (km/h)</div>
+                        <div class="value"><span id="agent2_speed">0.0</span></div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Fuel</div>
+                        <div class="value"><span id="agent2_fuelPct">0</span>%</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Decision</div>
+                        <div id="agent2_decision" class="pill" data-a="maintain">Maintain</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Tires (FL/FR)</div>
+                        <div class="value"><span id="agent2_tireFL">0</span>% / <span id="agent2_tireFR">0</span>%</div>
+                    </div>
+                    <div class="kpi">
+                        <div class="muted">Tires (RL/RR)</div>
+                        <div class="value"><span id="agent2_tireRL">0</span>% / <span id="agent2_tireRR">0</span>%</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <canvas id="raceCanvas"></canvas>
+        
+        <div id="loading">
+            <div style="text-align: center;">
+                <svg id="loadingSpinner" style="height: 2.5rem; width: 2.5rem; color: #ef4444; margin: 0 auto;" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle style="opacity: 0.25;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path style="opacity: 0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p id="loadingText" style="margin-top: 1rem; font-size: 1.125rem;">Loading Track & Assets...</p>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // ===================================
+        // Config & Constants
+        // ===================================
+
+        const CFG = {
+          TRACK_FILE: 'track_5762.json',      // From f1_replay_viewer.html
+          AGENT1_CAR_IMG: 'car_blue.png',   // Assumed new asset for Agent 1
+          AGENT2_CAR_IMG: 'car_red.png',      // From f1_replay_viewer.html
+          CAR_WIDTH: 30,                      // Visual size of car on canvas
+          CAR_HEIGHT: 15,                     // Visual size of car on canvas
+
+          // --- Config for Agent 1 (Praneel's DQN) ---
+          AGENT1: {
+            WS_PATH: 'ws://localhost:8000/ws',  // From index.html
+            MAX_SPEED_MPH: 200.0,
+            MAX_FUEL_LITERS: 100.0,
+            TOTAL_LAPS: 20,
+            LAP_DISTANCE_M: 3200.0,             // From index.html
+            ACTION_MAP: {                       // From index.html
+              0: { label: 'Accel', key: '0' },
+              1: { label: 'Brake', key: '1' },
+              2: { label: 'Coast', key: '2' },
+              3: { label: 'Pit Stop', key: '3' },
+            }
+          },
+
+          // --- Config for Agent 2 (Inference Backend) ---
+          AGENT2: {
+            WS_PATH: 'ws://localhost:8001/ws',  // ASSUMED new port
+            TANK_CAPACITY: 50.0,                // From index2.html
+            TRACK_LENGTH_M: 3200.0,             // From index2.html
+            DEADZONE: 0.3,                      // From index2.html
+            ACTION_MAP: {                       // From index2.html
+              'speed_up': 'Speed Up',
+              'slow_down': 'Slow Down',
+              'maintain': 'Maintain Speed'
+            }
+          }
+        };
+
+        const MPS_PER_MPH = 0.44704;
+        const MAX_SPEED_MPS = CFG.AGENT1.MAX_SPEED_MPH * MPS_PER_MPH;
+        
+        // ===================================
+        // Global State & UI Elements
+        // ===================================
+
+        const canvas = document.getElementById('raceCanvas');
+        const ctx = canvas.getContext('2d');
+        const loadingIndicator = document.getElementById('loading');
+        const loadingText = document.getElementById('loadingText');
+
+        // *** NEW ***: Offscreen canvas for persistent trails
+        const trailCanvas = document.createElement('canvas');
+        const trailCtx = trailCanvas.getContext('2d');
+
+        // Track & rendering state (from f1_replay_viewer.html)
+        let trackData = [];
+        let trackBounds = { minX: 0, maxX: 0, minY: 0, maxY: 0, width: 0, height: 0 };
+        let transform = { scale: 1, offsetX: 0, offsetY: 0 };
+
+        // Agent 1 (DQN)
+        let agent1 = {
+          id: 'dqn',
+          name: "Praneel's DQN",
+          color: '#3b82f6', // Blue
+          carImage: new Image(),
+          ws: null,
+          wsTimer: null,
+          state: null, // Holds latest processed data
+          status: 'Connecting...',
+          lastPosition: null, // *** NEW ***: For drawing trails
+          el: { // Cached DOM elements
+            status: document.getElementById('agent1_status'),
+            lap: document.getElementById('agent1_lap'),
+            progressPct: document.getElementById('agent1_progressPct'),
+            speed: document.getElementById('agent1_speed'),
+            fuelPct: document.getElementById('agent1_fuelPct'),
+            decision: document.getElementById('agent1_decision'),
+            tireFL: document.getElementById('agent1_tireFL'),
+            tireFR: document.getElementById('agent1_tireFR'),
+            tireRL: document.getElementById('agent1_tireRL'),
+            tireRR: document.getElementById('agent1_tireRR'),
+          }
+        };
+
+        // Agent 2 (Inference)
+        let agent2 = {
+          id: 'inference',
+          name: 'Inference',
+          color: '#ef4444', // Red
+          carImage: new Image(),
+          ws: null,
+          wsTimer: null,
+          state: null, // Holds latest processed data
+          status: 'Connecting...',
+          progress_m: 0, // For progress estimation
+          lastTs: null,  // For progress estimation
+          lastPosition: null, // *** NEW ***: For drawing trails
+          el: { // Cached DOM elements
+            status: document.getElementById('agent2_status'),
+            lap: document.getElementById('agent2_lap'),
+            progressPct: document.getElementById('agent2_progressPct'),
+            speed: document.getElementById('agent2_speed'),
+            fuelPct: document.getElementById('agent2_fuelPct'),
+            decision: document.getElementById('agent2_decision'),
+            tireFL: document.getElementById('agent2_tireFL'),
+            tireFR: document.getElementById('agent2_tireFR'),
+            tireRL: document.getElementById('agent2_tireRL'),
+            tireRR: document.getElementById('agent2_tireRR'),
+          }
+        };
+        
+        // ===================================
+        // Helper Functions
+        // ===================================
+
+        function clamp(x, lo, hi){ return Math.max(lo, Math.min(hi, x)); }
+        function clamp01(x){ return clamp(x, 0, 1); }
+        function fmt(n, d=1){ return Number(n).toFixed(d); }
+        
+        // --- Agent 1 (DQN) helpers from index.html ---
+        function getActionInfo(actionInt) {
+          return CFG.AGENT1.ACTION_MAP[actionInt] || { label: `Unknown (${actionInt})`, key: '?' };
+        }
+        
+        // --- Agent 2 (Inference) helpers from index2.html ---
+        function actionFromAccel(a){
+          if (a > CFG.AGENT2.DEADZONE) return 'speed_up';
+          if (a < -CFG.AGENT2.DEADZONE) return 'slow_down';
+          return 'maintain';
+        }
+        function labelFromAction(k){
+          return CFG.AGENT2.ACTION_MAP[k] || k || '';
+        }
+        function estimateProgressAgent2(state, ts) {
+          if(CFG.AGENT2.TRACK_LENGTH_M == null || CFG.AGENT2.TRACK_LENGTH_M <= 0) return;
+          if(agent2.lastTs != null && ts > agent2.lastTs){
+            const dt = ts - agent2.lastTs; // seconds
+            agent2.progress_m += state.current_speed * dt; // naive integration
+            if(agent2.progress_m >= CFG.AGENT2.TRACK_LENGTH_M) {
+                agent2.progress_m %= CFG.AGENT2.TRACK_LENGTH_M;
+            }
+          }
+          agent2.lastTs = ts;
+        }
+
+        // ===================================
+        // Initial Load & Setup
+        // ===================================
+
+        function showLoadingError(message) {
+            loadingText.innerText = message;
+            loadingSpinner.style.display = 'none';
+            console.error(message);
+        }
+
+        async function loadData() {
+            try {
+                // 1. Load Track
+                loadingText.innerText = `Loading track: ${CFG.TRACK_FILE}...`;
+                const trackResponse = await fetch(CFG.TRACK_FILE);
+                if (!trackResponse.ok) throw new Error(`HTTP error! Status: ${trackResponse.status} for ${CFG.TRACK_FILE}`);
+                
+                const rawTrackData = await trackResponse.json();
+                if (!rawTrackData || !rawTrackData.visualization_data) {
+                    throw new Error(`Invalid format for ${CFG.TRACK_FILE}: "visualization_data" not found.`);
+                }
+                trackData = rawTrackData.visualization_data;
+
+                // Flip track data sideways (swap X/Y) as done in f1_replay_viewer.html
+                trackData.forEach(p => { [p.x, p.y] = [p.y, p.x]; });
+
+                // 2. Load Car Images
+                loadingText.innerText = 'Loading car images...';
+                const car1Promise = new Promise((resolve, reject) => {
+                    agent1.carImage.src = CFG.AGENT1_CAR_IMG;
+                    agent1.carImage.onload = resolve;
+                    agent1.carImage.onerror = () => reject(new Error(`Could not load ${CFG.AGENT1_CAR_IMG}`));
+                });
+                const car2Promise = new Promise((resolve, reject) => {
+                    agent2.carImage.src = CFG.AGENT2_CAR_IMG;
+                    agent2.carImage.onload = resolve;
+                    agent2.carImage.onerror = () => reject(new Error(`Could not load ${CFG.AGENT2_CAR_IMG}`));
+                });
+
+                await Promise.all([car1Promise, car2Promise]);
+                
+                // 3. Setup and Connect
+                loadingText.innerText = 'All assets loaded.';
+                setup();
+                connectAll();
+                loadingIndicator.style.display = 'none';
+
+            } catch (error) {
+                showLoadingError(`Error: ${error.message}`);
+            }
+        }
+
+        function setup() {
+            resizeCanvas();
+            calculateTrackBounds();
+            calculateTransform();
+            
+            window.addEventListener('resize', handleResize);
+            
+            // Initial draw of the static track
+            draw();
+        }
+
+        function handleResize() {
+            resizeCanvas();
+            calculateTransform();
+            if (agent1.state || agent2.state) {
+                // Only redraw if we have active data
+                draw();
+            } else {
+                // Otherwise, just draw the track
+                ctx.fillStyle = '#111827';
+                ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+                drawTrack();
+            }
+        }
+        
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+
+            // Resize main canvas
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+
+            // *** NEW ***: Resize trail canvas
+            trailCanvas.width = rect.width * dpr;
+            trailCanvas.height = rect.height * dpr;
+            trailCtx.scale(dpr, dpr);
+            
+            // Clear trails on resize and reset last positions
+            agent1.lastPosition = null;
+            agent2.lastPosition = null;
+        }
+
+
+        function calculateTrackBounds() {
+            if (trackData.length === 0) return;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            trackData.forEach(p => {
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+            });
+            trackBounds = { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY };
+        }
+
+        function calculateTransform() {
+            const padding = 80; // pixels (from f1_replay_viewer.html)
+            const canvasWidth = canvas.clientWidth;
+            const canvasHeight = canvas.clientHeight;
+
+            const scaleX = (canvasWidth - padding * 2) / trackBounds.width;
+            const scaleY = (canvasHeight - padding * 2) / trackBounds.height;
+            transform.scale = Math.min(scaleX, scaleY);
+            
+            const trackRenderWidth = trackBounds.width * transform.scale;
+            const trackRenderHeight = trackBounds.height * transform.scale;
+
+            transform.offsetX = (canvasWidth - trackRenderWidth) / 2;
+            transform.offsetY = (canvasHeight - trackRenderHeight) / 2;
+        }
+
+        // ===================================
+        // Networking
+        // ===================================
+
+        function connectAll() {
+            connectAgent1();
+            connectAgent2();
+        }
+
+        // --- Agent 1 (DQN) Connection ---
+        function connectAgent1() {
+          const url = CFG.AGENT1.WS_PATH;
+          agent1.ws = new WebSocket(url);
+          
+          agent1.ws.onopen = () => {
+            if(agent1.wsTimer) { clearTimeout(agent1.wsTimer); agent1.wsTimer = null; }
+            console.log('[Agent1] WebSocket open', url);
+            updateAgentStatus(agent1, 'ok', 'Connected');
+          };
+          
+          agent1.ws.onmessage = (e) => {
+            try {
+                const fr = JSON.parse(e.data);
+                applyFrameAgent1(fr);
+            } catch (e) {
+                console.error('[Agent1] Parse error', e);
+            }
+          };
+          
+          agent1.ws.onerror = (e) => {
+            console.error('[Agent1] WebSocket error', e);
+            updateAgentStatus(agent1, 'error', 'Error');
+          };
+          
+          agent1.ws.onclose = (e) => {
+            console.warn('[Agent1] WebSocket closed', e.code, e.reason);
+            updateAgentStatus(agent1, 'connecting', 'Reconnecting...');
+            agent1.state = null; // Clear state
+            agent1.lastPosition = null; // *** NEW ***
+            draw(); // Redraw to remove car
+            agent1.wsTimer = setTimeout(connectAgent1, 1000); // Reconnect
+          };
+        }
+
+        // --- Agent 2 (Inference) Connection ---
+        function connectAgent2() {
+          const url = CFG.AGENT2.WS_PATH;
+          agent2.ws = new WebSocket(url);
+          
+          agent2.ws.onopen = () => {
+            if(agent2.wsTimer) { clearTimeout(agent2.wsTimer); agent2.wsTimer = null; }
+            console.log('[Agent2] WebSocket open', url);
+            updateAgentStatus(agent2, 'ok', 'Connected');
+          };
+          
+          agent2.ws.onmessage = (e) => {
+             try {
+                const fr = JSON.parse(e.data);
+                applyFrameAgent2(fr);
+             } catch (e) {
+                console.error('[Agent2] Parse error', e);
+             }
+          };
+          
+          agent2.ws.onerror = (e) => {
+            console.error('[Agent2] WebSocket error', e);
+            updateAgentStatus(agent2, 'error', 'Error');
+          };
+          
+          agent2.ws.onclose = (e) => {
+            console.warn('[Agent2] WebSocket closed', e.code, e.reason);
+            updateAgentStatus(agent2, 'connecting', 'Reconnecting...');
+            agent2.state = null; // Clear state
+            agent2.lastTs = null; // Reset estimator
+            agent2.progress_m = 0;
+            agent2.lastPosition = null; // *** NEW ***
+            draw(); // Redraw to remove car
+            agent2.wsTimer = setTimeout(connectAgent2, 1000); // Reconnect
+          };
+        }
+
+        // ===================================
+        // Data Processing (Apply Frames)
+        // ===================================
+        
+        /**
+         * Process data frame for Agent 1 (DQN)
+         * Based on index.html
+         */
+        function applyFrameAgent1(fr) {
+          if(!fr || !fr.state || !fr.state.state_vector || fr.decision == null || fr.distance_on_lap == null) return;
+          
+          const s = fr.state.state_vector;
+          const C = CFG.AGENT1;
+
+          // --- De-normalize data ---
+          const current_speed_mps = s[0] * MAX_SPEED_MPS;
+          const current_speed_kmh = current_speed_mps * 3.6;
+          const fuel_pct_01 = s[1];
+          const tires = [s[2], s[3], s[4], s[5]]; // [fl, fr, rl, rr]
+          const actionInfo = getActionInfo(fr.decision.action);
+          
+          // --- Position ---
+          let progress_01 = 0;
+          if(C.LAP_DISTANCE_M > 0) {
+              progress_01 = clamp01(fr.distance_on_lap / C.LAP_DISTANCE_M);
+          }
+
+          // --- Store state ---
+          agent1.state = {
+            lap: fr.lap ?? '—',
+            progress_01: progress_01,
+            speed_kmh: current_speed_kmh,
+            fuel_pct: fuel_pct_01 * 100,
+            tires_01: tires,
+            decision: actionInfo
+          };
+          
+          updateUI(agent1);
+          draw(); // Request redraw
+        }
+
+        /**
+         * Process data frame for Agent 2 (Inference)
+         * Based on index2.html
+         */
+        function applyFrameAgent2(fr) {
+          if(!fr || !fr.state || !fr.decision) return;
+          
+          const s = fr.state;
+          const t = fr.ts;
+          const C = CFG.AGENT2;
+
+          // --- De-normalize data ---
+          const current_speed_kmh = s.current_speed * 3.6; // Assuming m/s
+          const fuel_pct_01 = clamp01(s.current_fuel / C.TANK_CAPACITY);
+          const tires = [s.tire_wear.fl, s.tire_wear.fr, s.tire_wear.rl, s.tire_wear.rr];
+          
+          const accel = Number(fr.decision.accel ?? 0);
+          const actionKey = actionFromAccel(accel);
+          const decision = { label: labelFromAction(actionKey), key: actionKey };
+
+          // --- Position (Robustly) ---
+          // Prefer explicit distance_on_lap if backend sends it, otherwise fall back to estimation
+          if (fr.distance_on_lap != null && C.TRACK_LENGTH_M > 0) {
+             agent2.progress_m = fr.distance_on_lap;
+             agent2.lastTs = t; // Still update timestamp
+          } else {
+             // Fallback to estimation from index2.html
+             estimateProgressAgent2(s, t);
+          }
+          let progress_01 = 0;
+          if (C.TRACK_LENGTH_M > 0) {
+             progress_01 = clamp01(agent2.progress_m / C.TRACK_LENGTH_M);
+          }
+
+          // --- Store state ---
+          agent2.state = {
+            lap: fr.lap ?? '—',
+            progress_01: progress_01,
+            speed_kmh: current_speed_kmh,
+            fuel_pct: fuel_pct_01 * 100,
+            tires_01: tires,
+            decision: decision
+          };
+
+          updateUI(agent2);
+          draw(); // Request redraw
+        }
+
+        // ===================================
+        // UI Updates
+        // ===================================
+        
+        function updateAgentStatus(agent, status, text) {
+            agent.status = text;
+            if(agent.el.status) {
+                agent.el.status.dataset.status = status;
+                agent.el.status.textContent = text;
+            }
+        }
+
+        function updateUI(agent) {
+          if (!agent.state) return; // Don't update UI if no state
+          
+          const s = agent.state;
+          const el = agent.el;
+          
+          el.lap.textContent = s.lap;
+          el.progressPct.textContent = fmt(s.progress_01 * 100, 0);
+          el.speed.textContent = fmt(s.speed_kmh, 0);
+          el.fuelPct.textContent = fmt(s.fuel_pct, 0);
+          
+          el.tireFL.textContent = fmt(s.tires_01[0] * 100, 0);
+          el.tireFR.textContent = fmt(s.tires_01[1] * 100, 0);
+          el.tireRL.textContent = fmt(s.tires_01[2] * 100, 0);
+          el.tireRR.textContent = fmt(s.tires_01[3] * 100, 0);
+          
+          el.decision.dataset.a = s.decision.key;
+          el.decision.textContent = s.decision.label;
+        }
+
+        // ===================================
+        // Canvas Rendering
+        // ===================================
+
+        /**
+         * Main draw function. Clears canvas, draws track, then draws cars.
+         * This is called on data update, NOT in a loop.
+         */
+        function draw() {
+            ctx.fillStyle = '#111827';
+            ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+
+            // 1. Draw the static track
+            drawTrack();
+            
+            // 2. *** NEW ***: Update and draw trails
+            // This draws the *new* segments to the offscreen trail canvas
+            updateTrail(agent1);
+            updateTrail(agent2);
+            // This draws the entire persistent trail canvas onto the main canvas
+            ctx.drawImage(trailCanvas, 0, 0, canvas.clientWidth, canvas.clientHeight);
+
+            // 3. Draw cars on top of track and trails
+            if (agent1.state) {
+                drawCar(agent1);
+            }
+            if (agent2.state) {
+                drawCar(agent2);
+            }
+        }
+        
+        /**
+         * Transforms a track-space (x, y) point to canvas-space (x, y)
+         */
+        function transformPoint(x, y) {
+            return {
+                x: (x - trackBounds.minX) * transform.scale + transform.offsetX,
+                y: (y - trackBounds.minY) * transform.scale + transform.offsetY,
+            };
+        }
+
+        /**
+         * Draws the static track line.
+         * *** UPDATED ***: Pit lane is now yellow.
+         */
+        function drawTrack() {
+            if (trackData.length < 2) return;
+
+            // Separate main track and pit lane
+            const trackSegments = [];
+            const pitSegments = [];
+            let currentSegment = [];
+            let currentPitSegment = [];
+            let wasPit = trackData[0].is_pit_stop;
+
+            trackData.forEach(p => {
+                if(p.is_pit_stop !== wasPit) {
+                    if(wasPit) {
+                        pitSegments.push(currentPitSegment);
+                        currentPitSegment = [p];
+                    } else {
+                        trackSegments.push(currentSegment);
+                        currentSegment = [p];
+                    }
+                }
+                if(p.is_pit_stop){ currentPitSegment.push(p); } else { currentSegment.push(p); }
+                wasPit = p.is_pit_stop;
+            });
+            trackSegments.push(currentSegment);
+            pitSegments.push(currentPitSegment);
+
+            // Draw main track
+            ctx.strokeStyle = '#4B5563'; // Gray 600
+            ctx.lineWidth = 12 * transform.scale;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            trackSegments.forEach(segment => {
+                 if (segment.length < 2) return;
+                ctx.beginPath();
+                const startPoint = transformPoint(segment[0].x, segment[0].y);
+                ctx.moveTo(startPoint.x, startPoint.y);
+                for (let i = 1; i < segment.length; i++) {
+                    const p = transformPoint(segment[i].x, segment[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            });
+
+            // *** UPDATED ***: Draw pit lane
+            ctx.strokeStyle = '#EAB308'; // Yellow-500
+            ctx.lineWidth = 10 * transform.scale; // Make it stand out
+            pitSegments.forEach(segment => {
+                 if (segment.length < 2) return;
+                ctx.beginPath();
+                const startPoint = transformPoint(segment[0].x, segment[0].y);
+                ctx.moveTo(startPoint.x, startPoint.y);
+                for (let i = 1; i < segment.length; i++) {
+                    const p = transformPoint(segment[i].x, segment[i].y);
+                    ctx.lineTo(p.x, p.y);
+                }
+                ctx.stroke();
+            });
+        }
+
+        /**
+         * *** NEW ***
+         * Calculates the car's screen position and angle from its state.
+         * Returns {x, y, angle} or null.
+         */
+        function getCarTransform(agent) {
+            if (!trackData || trackData.length < 2 || !agent.state) return null;
+
+            const progress = agent.state.progress_01;
+            const idx = progress * (trackData.length - 1);
+            const low = Math.floor(idx);
+            const high = Math.min(trackData.length - 1, low + 1);
+            const ratio = idx - low;
+            
+            const p1 = trackData[low];
+            const p2 = trackData[high];
+            if (!p1 || !p2) return null; // Guard against track data issues
+
+            // Interpolate position
+            const x = p1.x + ratio * (p2.x - p1.x);
+            const y = p1.y + ratio * (p2.y - p1.y);
+            
+            // Calculate angle based on the direction of the track segment
+            const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+
+            // Transform to canvas coordinates
+            const carScreenPos = transformPoint(x, y);
+            return { x: carScreenPos.x, y: carScreenPos.y, angle: angle };
+        }
+
+        /**
+         * *** NEW ***
+         * Draws the latest trail segment for an agent onto the persistent trail canvas.
+         */
+        function updateTrail(agent) {
+            if (!agent.state) {
+                agent.lastPosition = null; // Reset if state is lost
+                return;
+            }
+            
+            const newPos = getCarTransform(agent);
+            if (!newPos) return;
+
+            const lastPos = agent.lastPosition;
+
+            if (lastPos) {
+                // Check for large jump (e.g., lap reset or data glitch)
+                const dist = Math.hypot(newPos.x - lastPos.x, newPos.y - lastPos.y);
+                
+                // Only draw if it's a small, contiguous segment
+                if (dist > 0 && dist < 200) { 
+                    trailCtx.beginPath();
+                    trailCtx.moveTo(lastPos.x, lastPos.y);
+                    trailCtx.lineTo(newPos.x, newPos.y);
+                    trailCtx.strokeStyle = agent.color;
+                    trailCtx.lineWidth = 5 * transform.scale; // Match original f1_replay_viewer
+                    trailCtx.globalAlpha = 0.8; // Match original f1_replay_viewer
+                    trailCtx.lineCap = 'round';
+                    trailCtx.lineJoin = 'round';
+                    trailCtx.stroke();
+                    trailCtx.globalAlpha = 1.0;
+                }
+            }
+            // Store the new position for the next frame
+            agent.lastPosition = { x: newPos.x, y: newPos.y };
+        }
+        
+        /**
+         * Draws a single agent's car on the canvas.
+         * *** UPDATED ***: Now uses getCarTransform()
+         */
+        function drawCar(agent) {
+            const transform = getCarTransform(agent);
+            if (!transform) return; // No state, don't draw
+            
+            ctx.save();
+            ctx.translate(transform.x, transform.y);
+            ctx.rotate(transform.angle);
+            
+            // Draw Car Image
+            ctx.drawImage(agent.carImage, -CFG.CAR_WIDTH / 2, -CFG.CAR_HEIGHT / 2, CFG.CAR_WIDTH, CFG.CAR_HEIGHT);
+            
+            // Draw Agent Name
+            ctx.fillStyle = agent.color;
+            ctx.font = 'bold 13px Inter';
+            ctx.textAlign = 'center';
+            ctx.shadowColor = "black";
+            ctx.shadowBlur = 4;
+            ctx.fillText(agent.name, 0, -CFG.CAR_HEIGHT); // Draw name above car
+            
+            ctx.restore();
+        }
+
+        // ===================================
+        // Boot
+        // ===================================
+        loadData();
+
+    </script>
+</body>
+</html>

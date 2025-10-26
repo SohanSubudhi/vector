@@ -6,3 +6,5 @@ typing
 uvicorn~=0.38.0
 fastapi~=0.119.0
 pydantic~=2.12.3
+gymnasium
+stable-baselines3
